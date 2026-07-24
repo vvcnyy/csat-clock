@@ -1,0 +1,532 @@
+import { useCallback, useEffect, useRef, useState } from "react";
+import { ExamPage } from "./components/ExamPage";
+import { LandingPage } from "./components/LandingPage";
+import {
+  COUNTDOWN_SECONDS,
+  readJson,
+  SESSION_KEY,
+  SETTINGS_KEY,
+  type ListeningTiming,
+  type Mode,
+  type Session,
+} from "./exam-types";
+import { useWakeLock } from "./useWakeLock";
+import { useExamTimeline } from "./useExamTimeline";
+import { useAudioPreviews } from "./useAudioPreviews";
+import {
+  bellEvents,
+  toSeconds,
+  type BellEvent,
+  type SubjectId,
+} from "./schedule";
+import { clearEnglishFile, loadEnglishFile, saveEnglishFile } from "./storage";
+
+function App() {
+  const savedSettings = readJson<
+    Pick<Session, "volume" | "listeningVolume" | "listeningTiming">
+  >(SETTINGS_KEY);
+  const [mode, setMode] = useState<Mode>("sync");
+  const [subjectId, setSubjectId] = useState<SubjectId>("korean");
+  const [volume, setVolume] = useState(savedSettings?.volume ?? 0.8);
+  const [listeningVolume, setListeningVolume] = useState(
+    savedSettings?.listeningVolume ?? 0.8,
+  );
+  const [listeningTiming, setListeningTiming] = useState<ListeningTiming>(
+    savedSettings?.listeningTiming ?? "before",
+  );
+  const [englishFile, setEnglishFile] = useState<File>();
+  const [session, setSession] = useState<Session | null>(() => readJson<Session>(SESSION_KEY));
+  const wakeLock = useWakeLock(Boolean(session));
+  const {
+    activeSubject,
+    countdown,
+    selectedSubject,
+    skipTargets,
+    subjectEvents,
+    virtualSeconds,
+  } = useExamTimeline(session, subjectId, listeningTiming);
+  const [currentBell, setCurrentBell] = useState<BellEvent | null>(null);
+  const [controlsVisible, setControlsVisible] = useState(false);
+  const [audioError, setAudioError] = useState("");
+  const previousVirtual = useRef<number | null>(null);
+  const playedEvents = useRef(new Set<string>());
+  const bellAudio = useRef<HTMLAudioElement | undefined>(undefined);
+  const preloadedBells = useRef(new Map<string, HTMLAudioElement>());
+  const listeningAudio = useRef<HTMLAudioElement | undefined>(undefined);
+  const [listeningResumeRequired, setListeningResumeRequired] = useState(false);
+  const listeningPlayed = useRef(false);
+  const listeningWasPlayingBeforePause = useRef(false);
+  const restoredOnLoad = useRef(Boolean(readJson<Session>(SESSION_KEY)));
+  const listeningResumeChecked = useRef(false);
+  const controlsTimer = useRef<number | undefined>(undefined);
+  const {
+    listeningPreviewing,
+    previewing,
+    stopBellPreview,
+    stopListeningPreview,
+    testBell,
+    testListening,
+  } = useAudioPreviews({
+    bellVolume: volume,
+    englishFile,
+    listeningVolume,
+    onError: setAudioError,
+  });
+
+  useEffect(() => {
+    loadEnglishFile().then(setEnglishFile).catch(() => undefined);
+  }, []);
+
+  useEffect(() => {
+    if (session) localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+    else localStorage.removeItem(SESSION_KEY);
+  }, [session]);
+
+  useEffect(() => {
+    localStorage.setItem(
+      SETTINGS_KEY,
+      JSON.stringify({ volume, listeningVolume, listeningTiming }),
+    );
+    if (listeningAudio.current) listeningAudio.current.volume = listeningVolume;
+  }, [volume, listeningVolume, listeningTiming]);
+
+  const clearPreloadedBells = useCallback(() => {
+    for (const audio of preloadedBells.current.values()) {
+      audio.removeAttribute("src");
+      audio.load();
+    }
+    preloadedBells.current.clear();
+  }, []);
+
+  useEffect(() => {
+    if (!session) {
+      clearPreloadedBells();
+      return;
+    }
+    const candidates = session.mode === "sync" ? bellEvents : subjectEvents;
+    const nextBells = candidates
+      .filter(
+        (bell) =>
+          toSeconds(bell.at) >= virtualSeconds &&
+          !playedEvents.current.has(bell.id),
+      )
+      .slice(0, 2);
+    const nextIds = new Set(nextBells.map((bell) => bell.id));
+
+    for (const [id, audio] of preloadedBells.current) {
+      if (!nextIds.has(id)) {
+        audio.removeAttribute("src");
+        audio.load();
+        preloadedBells.current.delete(id);
+      }
+    }
+    for (const bell of nextBells) {
+      if (preloadedBells.current.has(bell.id)) continue;
+      const audio = new Audio(`/${encodeURIComponent(bell.file)}`);
+      audio.preload = "auto";
+      audio.load();
+      preloadedBells.current.set(bell.id, audio);
+    }
+  }, [clearPreloadedBells, session, subjectEvents, virtualSeconds]);
+
+  const playBell = useCallback(
+    (bell: BellEvent) => {
+      const audio =
+        preloadedBells.current.get(bell.id) ??
+        new Audio(`/${encodeURIComponent(bell.file)}`);
+      preloadedBells.current.delete(bell.id);
+      audio.currentTime = 0;
+      audio.volume = volume;
+      bellAudio.current?.pause();
+      bellAudio.current = audio;
+      setCurrentBell(bell);
+      setAudioError("");
+      audio.play().catch(() => setAudioError("브라우저에서 소리 재생을 차단했습니다."));
+      audio.onerror = () => setAudioError(`${bell.label} 음원을 불러오지 못했습니다.`);
+      audio.onended = () => setCurrentBell((current) => (current?.id === bell.id ? null : current));
+    },
+    [volume],
+  );
+
+  const playListening = useCallback(async (offsetSeconds = 0) => {
+    if (!englishFile || listeningPlayed.current) return;
+    listeningPlayed.current = true;
+    const url = URL.createObjectURL(englishFile);
+    const audio = new Audio(url);
+    audio.volume = listeningVolume;
+    listeningAudio.current = audio;
+    const startPlayback = () => {
+      if (Number.isFinite(audio.duration) && offsetSeconds >= audio.duration) {
+        URL.revokeObjectURL(url);
+        listeningAudio.current = undefined;
+        return;
+      }
+      if (offsetSeconds > 0) {
+        audio.currentTime = Math.min(offsetSeconds, Math.max(0, audio.duration - 0.1));
+      }
+      audio
+        .play()
+        .then(() => setListeningResumeRequired(false))
+        .catch(() => {
+          listeningPlayed.current = false;
+          if (offsetSeconds > 0) setListeningResumeRequired(true);
+        });
+    };
+    if (audio.readyState >= HTMLMediaElement.HAVE_METADATA) startPlayback();
+    else audio.onloadedmetadata = startPlayback;
+    audio.onended = () => {
+      URL.revokeObjectURL(url);
+      if (listeningAudio.current === audio) listeningAudio.current = undefined;
+      listeningWasPlayingBeforePause.current = false;
+    };
+  }, [englishFile, listeningVolume]);
+
+  useEffect(() => {
+    if (
+      !restoredOnLoad.current ||
+      listeningResumeChecked.current ||
+      !session ||
+      !englishFile ||
+      countdown > 0 ||
+      session.pausedAt
+    ) {
+      return;
+    }
+
+    const englishActive =
+      session.mode === "sync" || session.subjectId === "english";
+    if (!englishActive) {
+      listeningResumeChecked.current = true;
+      return;
+    }
+
+    const listeningAt = toSeconds(
+      listeningTiming === "before" ? "13:07:00" : "13:10:00",
+    );
+    const englishEnd = toSeconds("14:20:00");
+    listeningResumeChecked.current = true;
+    if (virtualSeconds >= listeningAt && virtualSeconds < englishEnd) {
+      void playListening(virtualSeconds - listeningAt);
+    }
+  }, [
+    countdown,
+    englishFile,
+    listeningTiming,
+    playListening,
+    session,
+    virtualSeconds,
+  ]);
+
+  useEffect(() => {
+    if (!session || countdown > 0 || session.pausedAt) {
+      previousVirtual.current =
+        session?.mode === "subject" && countdown > 0
+          ? virtualSeconds - 1
+          : virtualSeconds;
+      return;
+    }
+
+    const previous = previousVirtual.current ?? virtualSeconds;
+    const candidates = session.mode === "sync" ? bellEvents : subjectEvents;
+    for (const bell of candidates) {
+      const at = toSeconds(bell.at);
+      if (previous < at && virtualSeconds >= at && !playedEvents.current.has(bell.id)) {
+        playedEvents.current.add(bell.id);
+        if (virtualSeconds - at <= 5) playBell(bell);
+      }
+    }
+
+    const englishActive =
+      session.mode === "sync" || session.subjectId === "english";
+    if (englishActive) {
+      const listeningAt = toSeconds(listeningTiming === "before" ? "13:07:00" : "13:10:00");
+      if (previous < listeningAt && virtualSeconds >= listeningAt) void playListening();
+    }
+
+    previousVirtual.current = virtualSeconds;
+  }, [
+    countdown,
+    listeningTiming,
+    playBell,
+    playListening,
+    session,
+    subjectEvents,
+    virtualSeconds,
+  ]);
+
+  useEffect(() => {
+    if (!session || session.mode !== "subject" || session.pausedAt || countdown > 0) return;
+    if (virtualSeconds >= toSeconds(selectedSubject.end) + 2) {
+      // 종료령 재생이 시작된 후 화면은 유지한다.
+      setControlsVisible(true);
+    }
+  }, [countdown, selectedSubject.end, session, virtualSeconds]);
+
+  useEffect(() => {
+    if (!session) return;
+    const handleVisibility = () => {
+      if (
+        document.visibilityState !== "visible" ||
+        session.pausedAt ||
+        !listeningAudio.current ||
+        listeningAudio.current.ended
+      ) {
+        return;
+      }
+      const listeningAt = toSeconds(
+        listeningTiming === "before" ? "13:07:00" : "13:10:00",
+      );
+      const expected = Math.max(0, virtualSeconds - listeningAt);
+      const duration = listeningAudio.current.duration;
+      if (
+        Number.isFinite(duration) &&
+        expected < duration &&
+        Math.abs(listeningAudio.current.currentTime - expected) > 2
+      ) {
+        listeningAudio.current.currentTime = expected;
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => document.removeEventListener("visibilitychange", handleVisibility);
+  }, [listeningTiming, session, virtualSeconds]);
+
+  const chooseEnglishFile = async (file?: File) => {
+    if (!file) return;
+    setEnglishFile(file);
+    try {
+      await saveEnglishFile(file);
+    } catch {
+      setAudioError("듣기 파일은 선택됐지만 새로고침 복원용 저장에 실패했습니다.");
+    }
+  };
+
+  const removeEnglishFile = async () => {
+    stopListeningPreview();
+    setEnglishFile(undefined);
+    try {
+      await clearEnglishFile();
+    } catch {
+      setAudioError("저장된 듣기 파일을 삭제하지 못했습니다.");
+    }
+  };
+
+  const begin = () => {
+    stopBellPreview();
+    stopListeningPreview();
+    clearPreloadedBells();
+    if (bellAudio.current) {
+      bellAudio.current.pause();
+      bellAudio.current.currentTime = 0;
+      bellAudio.current = undefined;
+    }
+    if (listeningAudio.current) {
+      listeningAudio.current.pause();
+      listeningAudio.current.currentTime = 0;
+      listeningAudio.current = undefined;
+    }
+    const startedAt = Date.now();
+    playedEvents.current.clear();
+    listeningPlayed.current = false;
+    listeningWasPlayingBeforePause.current = false;
+    setListeningResumeRequired(false);
+    restoredOnLoad.current = false;
+    listeningResumeChecked.current = true;
+    previousVirtual.current = null;
+    setCurrentBell(null);
+    setAudioError("");
+    setSession({
+      mode,
+      subjectId: mode === "subject" ? subjectId : undefined,
+      startedAt,
+      countdownUntil: mode === "subject" ? startedAt + COUNTDOWN_SECONDS * 1000 : undefined,
+      pausedTotal: 0,
+      volume,
+      listeningVolume,
+      listeningTiming,
+    });
+    document.documentElement.requestFullscreen?.().catch(() => undefined);
+  };
+
+  const togglePause = () => {
+    if (!session || session.mode === "sync") return;
+    setSession((current) => {
+      if (!current) return current;
+      if (current.pausedAt) {
+        const pauseLength = Date.now() - current.pausedAt;
+        if (
+          listeningWasPlayingBeforePause.current &&
+          listeningAudio.current &&
+          !listeningAudio.current.ended
+        ) {
+          listeningAudio.current.play().catch(() => undefined);
+        }
+        listeningWasPlayingBeforePause.current = false;
+        return {
+          ...current,
+          pausedAt: undefined,
+          pausedTotal: current.pausedTotal + pauseLength,
+        };
+      }
+      bellAudio.current?.pause();
+      listeningWasPlayingBeforePause.current = Boolean(
+        listeningAudio.current &&
+          !listeningAudio.current.paused &&
+          !listeningAudio.current.ended,
+      );
+      listeningAudio.current?.pause();
+      return { ...current, pausedAt: Date.now() };
+    });
+  };
+
+  const skipTo = (targetSeconds: number) => {
+    if (!session || session.mode !== "subject") return;
+    const firstEvent = toSeconds(subjectEvents[0]?.at ?? selectedSubject.start);
+    const clockMs = session.pausedAt ?? Date.now();
+    const targetElapsed = Math.max(0, targetSeconds - firstEvent) * 1000;
+
+    bellAudio.current?.pause();
+    setCurrentBell(null);
+    for (const bell of subjectEvents) {
+      if (toSeconds(bell.at) < targetSeconds) playedEvents.current.add(bell.id);
+    }
+    previousVirtual.current = targetSeconds - 1;
+
+    const listeningAt = toSeconds(
+      listeningTiming === "before" ? "13:07:00" : "13:10:00",
+    );
+    if (
+      session.subjectId === "english" &&
+      targetSeconds >= listeningAt &&
+      !listeningPlayed.current
+    ) {
+      void playListening(Math.max(0, targetSeconds - listeningAt));
+    }
+
+    setSession((current) =>
+      current
+        ? {
+            ...current,
+            countdownUntil: undefined,
+            startedAt:
+              clockMs -
+              current.pausedTotal -
+              COUNTDOWN_SECONDS * 1000 -
+              targetElapsed,
+          }
+        : current,
+    );
+  };
+
+  const exitExam = () => {
+    stopBellPreview();
+    stopListeningPreview();
+    clearPreloadedBells();
+    bellAudio.current?.pause();
+    listeningAudio.current?.pause();
+    setSession(null);
+    setCurrentBell(null);
+    previousVirtual.current = null;
+    playedEvents.current.clear();
+    listeningPlayed.current = false;
+    listeningWasPlayingBeforePause.current = false;
+    setListeningResumeRequired(false);
+    restoredOnLoad.current = false;
+    listeningResumeChecked.current = false;
+    document.exitFullscreen?.().catch(() => undefined);
+  };
+
+  const revealControls = () => {
+    setControlsVisible(true);
+    window.clearTimeout(controlsTimer.current);
+    controlsTimer.current = window.setTimeout(() => setControlsVisible(false), 2600);
+  };
+
+  const resumeListeningFromCurrentTime = () => {
+    const listeningAt = toSeconds(
+      listeningTiming === "before" ? "13:07:00" : "13:10:00",
+    );
+    const offset = Math.max(0, virtualSeconds - listeningAt);
+    const audio = listeningAudio.current;
+
+    if (!audio) {
+      listeningPlayed.current = false;
+      void playListening(offset);
+      return;
+    }
+
+    if (Number.isFinite(audio.duration)) {
+      audio.currentTime = Math.min(offset, Math.max(0, audio.duration - 0.1));
+    }
+    listeningPlayed.current = true;
+    audio
+      .play()
+      .then(() => {
+        setListeningResumeRequired(false);
+        setAudioError("");
+      })
+      .catch(() => {
+        listeningPlayed.current = false;
+        setAudioError("영어 듣기를 재생할 수 없습니다. 브라우저의 소리 권한을 확인해 주세요.");
+      });
+  };
+
+  if (!session) {
+    return (
+      <LandingPage
+        mode={mode}
+        subjectId={subjectId}
+        volume={volume}
+        listeningVolume={listeningVolume}
+        listeningTiming={listeningTiming}
+        englishFile={englishFile}
+        previewing={previewing}
+        listeningPreviewing={listeningPreviewing}
+        audioError={audioError}
+        onModeChange={setMode}
+        onSubjectChange={setSubjectId}
+        onVolumeChange={setVolume}
+        onListeningVolumeChange={setListeningVolume}
+        onListeningTimingChange={setListeningTiming}
+        onChooseEnglishFile={(file) => void chooseEnglishFile(file)}
+        onRemoveEnglishFile={() => void removeEnglishFile()}
+        onTestBell={testBell}
+        onTestListening={testListening}
+        onStart={begin}
+      />
+    );
+  }
+
+  return (
+    <ExamPage
+      session={session}
+      countdown={countdown}
+      activeSubject={activeSubject}
+      virtualSeconds={virtualSeconds}
+      currentBell={currentBell}
+      controlsVisible={controlsVisible}
+      skipTargets={skipTargets}
+      listeningTiming={listeningTiming}
+      wakeLockStatus={wakeLock.status}
+      volume={volume}
+      listeningVolume={listeningVolume}
+      listeningResumeRequired={listeningResumeRequired}
+      audioError={audioError}
+      onRevealControls={revealControls}
+      onSkip={skipTo}
+      onTogglePause={togglePause}
+      onRequestWakeLock={() => void wakeLock.request()}
+      onVolumeChange={(next) => {
+        setVolume(next);
+        if (bellAudio.current) bellAudio.current.volume = next;
+      }}
+      onListeningVolumeChange={(next) => {
+        setListeningVolume(next);
+        if (listeningAudio.current) listeningAudio.current.volume = next;
+      }}
+      onExit={exitExam}
+      onResumeListening={resumeListeningFromCurrentTime}
+    />
+  );
+}
+
+export default App;
