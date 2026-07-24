@@ -70,9 +70,8 @@ export function LandingPage({
     <main className="landing">
       <Card className="setup-card">
         <CardHeader>
-          <div className="brand-mark">M</div>
           <div>
-            <CardTitle>모고시계</CardTitle>
+            <CardTitle>수능시계</CardTitle>
             <CardDescription>수능 시간표와 실제 타종으로 연습합니다.</CardDescription>
           </div>
         </CardHeader>
@@ -203,8 +202,10 @@ export function LandingPage({
 
       <ScheduleInfoDialog />
       <footer className="copyright">
-        © 2026 Mogo Clock. 개인 학습용 서비스이며, 업로드한 음원의 저작권과
+        © 2026 vvcnyy. 개인 학습용 서비스이며, 업로드한 음원의 저작권과
         이용 책임은 사용자에게 있습니다.
+        <br/>
+        이용 문의 : me@vvcnyy.me
       </footer>
     </main>
   );
