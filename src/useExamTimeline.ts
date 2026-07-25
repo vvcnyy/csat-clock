@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { COUNTDOWN_SECONDS, secondsNow, type ListeningTiming, type Session } from "./exam-types";
 import {
+  customEvents,
   eventsForSubject,
+  formatClockTime,
+  getBellSeconds,
   getSubject,
   subjects,
   toSeconds,
@@ -20,10 +23,33 @@ export function useExamTimeline(
     return () => window.clearInterval(timer);
   }, []);
 
-  const selectedSubject = getSubject(session?.subjectId ?? selectedSubjectId);
+  const regularSubject = getSubject(session?.subjectId ?? selectedSubjectId);
+  const customStartSeconds = session?.customStartSeconds ?? 0;
+  const customDurationMinutes = session?.customDurationMinutes ?? 1;
+  const customEndSeconds =
+    customStartSeconds + customDurationMinutes * 60;
+  const customSubject = {
+    id: "custom" as const,
+    period: "자유 응시",
+    name: `${customDurationMinutes}분 시험`,
+    start: formatClockTime(customStartSeconds),
+    end: formatClockTime(customEndSeconds),
+  };
+  const selectedSubject =
+    session?.mode === "custom" ? customSubject : regularSubject;
   const subjectEvents = useMemo(
-    () => (session?.subjectId ? eventsForSubject(session.subjectId) : []),
-    [session?.subjectId],
+    () => {
+      if (session?.mode === "custom") {
+        return customEvents(customStartSeconds, customDurationMinutes);
+      }
+      return session?.subjectId ? eventsForSubject(session.subjectId) : [];
+    },
+    [
+      customDurationMinutes,
+      customStartSeconds,
+      session?.mode,
+      session?.subjectId,
+    ],
   );
 
   const countdown = session?.countdownUntil
@@ -32,7 +58,9 @@ export function useExamTimeline(
 
   const virtualSeconds = useMemo(() => {
     if (!session || session.mode === "sync") return secondsNow();
-    const firstEvent = toSeconds(subjectEvents[0]?.at ?? selectedSubject.start);
+    const firstEvent = subjectEvents[0]
+      ? getBellSeconds(subjectEvents[0])
+      : toSeconds(selectedSubject.start);
     const clockMs = session.pausedAt ?? nowMs;
     const elapsed = Math.max(
       0,
@@ -46,7 +74,7 @@ export function useExamTimeline(
 
   const activeSubject = useMemo(() => {
     if (!session) return selectedSubject;
-    if (session.mode === "subject") return selectedSubject;
+    if (session.mode !== "sync") return selectedSubject;
     return (
       subjects.find(
         (subject) =>
@@ -55,6 +83,26 @@ export function useExamTimeline(
       ) ?? null
     );
   }, [selectedSubject, session, virtualSeconds]);
+
+  const examStartSeconds =
+    session?.mode === "custom"
+      ? customStartSeconds
+      : toSeconds(selectedSubject.start);
+  const examEndSeconds =
+    session?.mode === "custom"
+      ? customEndSeconds
+      : toSeconds(selectedSubject.end);
+  const examInProgress = Boolean(
+    session &&
+      session.mode !== "sync" &&
+      virtualSeconds >= examStartSeconds &&
+      virtualSeconds < examEndSeconds,
+  ) || Boolean(
+    session?.mode === "sync" &&
+      activeSubject &&
+      virtualSeconds >= toSeconds(activeSubject.start) &&
+      virtualSeconds < toSeconds(activeSubject.end),
+  );
 
   const skipTargets = useMemo(() => {
     if (!session || session.mode !== "subject") return null;
@@ -65,7 +113,7 @@ export function useExamTimeline(
     const cutoff = session.subjectId === "english" ? listeningAt : start;
     if (virtualSeconds >= cutoff) return null;
     const futureBells = subjectEvents
-      .map((bell) => toSeconds(bell.at))
+      .map(getBellSeconds)
       .filter((at) => at > virtualSeconds && at <= cutoff);
     const milestones = [...futureBells, cutoff].sort((a, b) => a - b);
     return { next: milestones[0], direct: cutoff };
@@ -80,6 +128,9 @@ export function useExamTimeline(
   return {
     activeSubject,
     countdown,
+    examEndSeconds,
+    examInProgress,
+    examStartSeconds,
     nowMs,
     selectedSubject,
     skipTargets,

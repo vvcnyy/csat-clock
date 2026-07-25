@@ -5,9 +5,11 @@ import {
   COUNTDOWN_SECONDS,
   EXAM_COMPLETION_DELAY_SECONDS,
   readJson,
+  secondsNow,
   SESSION_KEY,
   SETTINGS_KEY,
   type ListeningTiming,
+  type CustomStartMode,
   type Mode,
   type Session,
 } from "./exam-types";
@@ -17,6 +19,7 @@ import { useAudioPreviews } from "./useAudioPreviews";
 import { useMediaSessionGuard } from "./useMediaSessionGuard";
 import {
   bellEvents,
+  getBellSeconds,
   toSeconds,
   type BellEvent,
   type SubjectId,
@@ -25,7 +28,11 @@ import { clearEnglishFile, loadEnglishFile, saveEnglishFile } from "./storage";
 
 function App() {
   const savedSettings = readJson<
-    Pick<Session, "volume" | "listeningVolume" | "listeningTiming">
+    Pick<Session, "volume" | "listeningVolume" | "listeningTiming"> & {
+      customDurationMinutes?: number;
+      customStartMode?: CustomStartMode;
+      customStartTime?: string;
+    }
   >(SETTINGS_KEY);
   const [mode, setMode] = useState<Mode>("sync");
   const [subjectId, setSubjectId] = useState<SubjectId>("korean");
@@ -36,6 +43,15 @@ function App() {
   const [listeningTiming, setListeningTiming] = useState<ListeningTiming>(
     savedSettings?.listeningTiming ?? "before",
   );
+  const [customDurationMinutes, setCustomDurationMinutes] = useState(
+    savedSettings?.customDurationMinutes ?? 60,
+  );
+  const [customStartMode, setCustomStartMode] = useState<CustomStartMode>(
+    savedSettings?.customStartMode ?? "now",
+  );
+  const [customStartTime, setCustomStartTime] = useState(
+    savedSettings?.customStartTime ?? "09:00",
+  );
   const [englishFile, setEnglishFile] = useState<File>();
   const [session, setSession] = useState<Session | null>(() => readJson<Session>(SESSION_KEY));
   const wakeLock = useWakeLock(Boolean(session));
@@ -43,6 +59,8 @@ function App() {
   const {
     activeSubject,
     countdown,
+    examEndSeconds,
+    examInProgress,
     selectedSubject,
     skipTargets,
     subjectEvents,
@@ -89,10 +107,24 @@ function App() {
   useEffect(() => {
     localStorage.setItem(
       SETTINGS_KEY,
-      JSON.stringify({ volume, listeningVolume, listeningTiming }),
+      JSON.stringify({
+        volume,
+        listeningVolume,
+        listeningTiming,
+        customDurationMinutes,
+        customStartMode,
+        customStartTime,
+      }),
     );
     if (listeningAudio.current) listeningAudio.current.volume = listeningVolume;
-  }, [volume, listeningVolume, listeningTiming]);
+  }, [
+    customDurationMinutes,
+    customStartMode,
+    customStartTime,
+    volume,
+    listeningVolume,
+    listeningTiming,
+  ]);
 
   const clearPreloadedBells = useCallback(() => {
     for (const audio of preloadedBells.current.values()) {
@@ -111,7 +143,7 @@ function App() {
     const nextBells = candidates
       .filter(
         (bell) =>
-          toSeconds(bell.at) >= virtualSeconds &&
+          getBellSeconds(bell) >= virtualSeconds &&
           !playedEvents.current.has(bell.id),
       )
       .slice(0, 2);
@@ -224,7 +256,7 @@ function App() {
   useEffect(() => {
     if (!session || countdown > 0 || session.pausedAt) {
       previousVirtual.current =
-        session?.mode === "subject" && countdown > 0
+        session?.mode !== "sync" && countdown > 0
           ? virtualSeconds - 1
           : virtualSeconds;
       return;
@@ -233,7 +265,7 @@ function App() {
     const previous = previousVirtual.current ?? virtualSeconds;
     const candidates = session.mode === "sync" ? bellEvents : subjectEvents;
     for (const bell of candidates) {
-      const at = toSeconds(bell.at);
+      const at = getBellSeconds(bell);
       if (previous < at && virtualSeconds >= at && !playedEvents.current.has(bell.id)) {
         playedEvents.current.add(bell.id);
         if (virtualSeconds - at <= 5) playBell(bell);
@@ -259,15 +291,15 @@ function App() {
   ]);
 
   useEffect(() => {
-    if (!session || session.mode !== "subject" || session.pausedAt || countdown > 0) return;
+    if (!session || session.mode === "sync" || session.pausedAt || countdown > 0) return;
     if (
       virtualSeconds >=
-      toSeconds(selectedSubject.end) + EXAM_COMPLETION_DELAY_SECONDS
+      examEndSeconds + EXAM_COMPLETION_DELAY_SECONDS
     ) {
       setExamCompleted(true);
       setControlsVisible(true);
     }
-  }, [countdown, selectedSubject.end, session, virtualSeconds]);
+  }, [countdown, examEndSeconds, session, virtualSeconds]);
 
   useEffect(() => {
     if (!session) return;
@@ -318,6 +350,13 @@ function App() {
   };
 
   const begin = () => {
+    if (
+      mode === "custom" &&
+      (!Number.isFinite(customDurationMinutes) || customDurationMinutes <= 0)
+    ) {
+      setAudioError("시험 시간을 1분 이상 입력해 주세요.");
+      return;
+    }
     stopBellPreview();
     stopListeningPreview();
     clearPreloadedBells();
@@ -332,6 +371,11 @@ function App() {
       listeningAudio.current = undefined;
     }
     const startedAt = Date.now();
+    const safeCustomDuration = Math.max(1, Math.floor(customDurationMinutes || 1));
+    const customStartSeconds =
+      customStartMode === "now"
+        ? secondsNow() + COUNTDOWN_SECONDS
+        : toSeconds(`${customStartTime || "09:00"}:00`);
     playedEvents.current.clear();
     listeningPlayed.current = false;
     listeningWasPlayingBeforePause.current = false;
@@ -346,11 +390,16 @@ function App() {
       mode,
       subjectId: mode === "subject" ? subjectId : undefined,
       startedAt,
-      countdownUntil: mode === "subject" ? startedAt + COUNTDOWN_SECONDS * 1000 : undefined,
+      countdownUntil:
+        mode !== "sync" ? startedAt + COUNTDOWN_SECONDS * 1000 : undefined,
       pausedTotal: 0,
       volume,
       listeningVolume,
       listeningTiming,
+      customDurationMinutes:
+        mode === "custom" ? safeCustomDuration : undefined,
+      customStartSeconds:
+        mode === "custom" ? customStartSeconds : undefined,
     });
     document.documentElement.requestFullscreen?.().catch(() => undefined);
   };
@@ -396,7 +445,7 @@ function App() {
     setCurrentBell(null);
     setExamCompleted(false);
     for (const bell of subjectEvents) {
-      if (toSeconds(bell.at) < targetSeconds) playedEvents.current.add(bell.id);
+      if (getBellSeconds(bell) < targetSeconds) playedEvents.current.add(bell.id);
     }
     previousVirtual.current = targetSeconds - 1;
 
@@ -487,6 +536,9 @@ function App() {
         volume={volume}
         listeningVolume={listeningVolume}
         listeningTiming={listeningTiming}
+        customDurationMinutes={customDurationMinutes}
+        customStartMode={customStartMode}
+        customStartTime={customStartTime}
         englishFile={englishFile}
         previewing={previewing}
         listeningPreviewing={listeningPreviewing}
@@ -496,6 +548,9 @@ function App() {
         onVolumeChange={setVolume}
         onListeningVolumeChange={setListeningVolume}
         onListeningTimingChange={setListeningTiming}
+        onCustomDurationChange={setCustomDurationMinutes}
+        onCustomStartModeChange={setCustomStartMode}
+        onCustomStartTimeChange={setCustomStartTime}
         onChooseEnglishFile={(file) => void chooseEnglishFile(file)}
         onRemoveEnglishFile={() => void removeEnglishFile()}
         onTestBell={testBell}
@@ -510,6 +565,7 @@ function App() {
       session={session}
       countdown={countdown}
       activeSubject={activeSubject}
+      examInProgress={examInProgress}
       virtualSeconds={virtualSeconds}
       currentBell={currentBell}
       controlsVisible={controlsVisible}

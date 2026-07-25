@@ -10,7 +10,7 @@ import {
 import { useEffect, useState } from "react";
 import AnalogClock from "../AnalogClock";
 import type { ListeningTiming, Session } from "../exam-types";
-import { toSeconds, type BellEvent, type Subject } from "../schedule";
+import type { BellEvent } from "../schedule";
 import type { WakeLockStatus } from "../useWakeLock";
 import {
   AlertDialog,
@@ -34,7 +34,13 @@ interface SkipTargets {
 interface ExamPageProps {
   session: Session;
   countdown: number;
-  activeSubject: Subject | null;
+  activeSubject: {
+    period: string;
+    name: string;
+    start: string;
+    end: string;
+  } | null;
+  examInProgress: boolean;
   virtualSeconds: number;
   currentBell: BellEvent | null;
   controlsVisible: boolean;
@@ -60,6 +66,7 @@ export function ExamPage({
   session,
   countdown,
   activeSubject,
+  examInProgress,
   virtualSeconds,
   currentBell,
   controlsVisible,
@@ -89,11 +96,6 @@ export function ExamPage({
     activeSubject
       ? `${activeSubject.start.slice(0, 5)} ~ ${activeSubject.end.slice(0, 5)}`
       : "",
-  );
-  const examInProgress = Boolean(
-    activeSubject &&
-      virtualSeconds >= toSeconds(activeSubject.start) &&
-      virtualSeconds < toSeconds(activeSubject.end),
   );
 
   useEffect(() => {
@@ -197,7 +199,7 @@ export function ExamPage({
           </div>
         )}
 
-        {session.mode === "subject" && (
+        {session.mode !== "sync" && (
           <Button variant="outline" size="sm" onClick={onTogglePause}>
             {session.pausedAt ? "계속하기" : "일시정지"}
           </Button>

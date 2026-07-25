@@ -248,6 +248,7 @@ button { cursor: pointer; }
 .field-label { display: block; margin-bottom: 8px; font-size: 13px; font-weight: 500; }
 .field-help { margin: 8px 0 0; color: var(--muted-foreground); font-size: 12px; line-height: 1.5; }
 .mode-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.mode-grid-three { grid-template-columns: repeat(3, 1fr); }
 .mode-option {
   display: flex;
   min-height: 42px;
@@ -270,6 +271,39 @@ button { cursor: pointer; }
   border: 1px solid var(--border);
   border-radius: 9px;
   background: #0b0b0e;
+}
+.custom-settings {
+  margin: 0 0 20px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: #0b0b0e;
+}
+.custom-settings .field:last-child { margin-bottom: 0; }
+.duration-input {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.duration-input input,
+.time-input {
+  height: 40px;
+  color: var(--foreground);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--background);
+  font-size: 14px;
+}
+.duration-input input {
+  width: 120px;
+  padding: 0 12px;
+}
+.duration-input span { color: var(--muted-foreground); font-size: 13px; }
+.time-input {
+  width: 100%;
+  margin-top: 10px;
+  padding: 0 12px;
+  color-scheme: dark;
 }
 .english-settings .field { margin-bottom: 14px; }
 .listening-volume {
@@ -459,7 +493,7 @@ button { cursor: pointer; }
   left: 0;
   width: 100%;
   opacity: 0;
-  font-size: clamp(22px, 3vmin, 32px);
+  font-size: clamp(26px, 3.6vmin, 38px);
   font-weight: 600;
   transition: opacity 260ms ease;
   pointer-events: none;
@@ -582,6 +616,7 @@ button { cursor: pointer; }
   .ui-card-content { padding: 0 18px 2px; }
   .ui-card-footer { padding: 14px 18px 18px; }
   .mode-grid { grid-template-columns: 1fr; }
+  .mode-grid-three { grid-template-columns: 1fr; }
   .english-settings .mode-grid { grid-template-columns: 1fr 1fr; }
   .schedule-dialog-body { grid-template-columns: 1fr; }
   .clock { border-width: 4px; }

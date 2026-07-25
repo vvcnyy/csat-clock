@@ -1,7 +1,8 @@
 import type { SubjectId } from "./schedule";
 
-export type Mode = "sync" | "subject";
+export type Mode = "sync" | "subject" | "custom";
 export type ListeningTiming = "before" | "start";
+export type CustomStartMode = "now" | "specific";
 
 export interface Session {
   mode: Mode;
@@ -13,6 +14,8 @@ export interface Session {
   volume: number;
   listeningVolume: number;
   listeningTiming: ListeningTiming;
+  customDurationMinutes?: number;
+  customStartSeconds?: number;
 }
 
 export const SESSION_KEY = "mogo-clock-session";

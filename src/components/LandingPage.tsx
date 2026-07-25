@@ -1,5 +1,9 @@
 import { Check, Pause, Play, Upload, Volume2, VolumeX, X } from "lucide-react";
-import type { ListeningTiming, Mode } from "../exam-types";
+import type {
+  CustomStartMode,
+  ListeningTiming,
+  Mode,
+} from "../exam-types";
 import { subjects, type SubjectId } from "../schedule";
 import { ScheduleInfoDialog } from "./ScheduleInfoDialog";
 import { Button } from "./ui/button";
@@ -26,6 +30,9 @@ interface LandingPageProps {
   volume: number;
   listeningVolume: number;
   listeningTiming: ListeningTiming;
+  customDurationMinutes: number;
+  customStartMode: CustomStartMode;
+  customStartTime: string;
   englishFile?: File;
   previewing: boolean;
   listeningPreviewing: boolean;
@@ -35,6 +42,9 @@ interface LandingPageProps {
   onVolumeChange: (volume: number) => void;
   onListeningVolumeChange: (volume: number) => void;
   onListeningTimingChange: (timing: ListeningTiming) => void;
+  onCustomDurationChange: (minutes: number) => void;
+  onCustomStartModeChange: (mode: CustomStartMode) => void;
+  onCustomStartTimeChange: (time: string) => void;
   onChooseEnglishFile: (file?: File) => void;
   onRemoveEnglishFile: () => void;
   onTestBell: () => void;
@@ -48,6 +58,9 @@ export function LandingPage({
   volume,
   listeningVolume,
   listeningTiming,
+  customDurationMinutes,
+  customStartMode,
+  customStartTime,
   englishFile,
   previewing,
   listeningPreviewing,
@@ -57,6 +70,9 @@ export function LandingPage({
   onVolumeChange,
   onListeningVolumeChange,
   onListeningTimingChange,
+  onCustomDurationChange,
+  onCustomStartModeChange,
+  onCustomStartTimeChange,
   onChooseEnglishFile,
   onRemoveEnglishFile,
   onTestBell,
@@ -79,7 +95,7 @@ export function LandingPage({
         <CardContent>
           <div className="field">
             <span className="field-label">응시 모드</span>
-            <div className="mode-grid">
+            <div className="mode-grid mode-grid-three">
               <button
                 className={`mode-option ${mode === "sync" ? "active" : ""}`}
                 onClick={() => onModeChange("sync")}
@@ -94,11 +110,20 @@ export function LandingPage({
                 <span>과목별 응시</span>
                 {mode === "subject" && <Check size={16} />}
               </button>
+              <button
+                className={`mode-option ${mode === "custom" ? "active" : ""}`}
+                onClick={() => onModeChange("custom")}
+              >
+                <span>시간 직접 설정</span>
+                {mode === "custom" && <Check size={16} />}
+              </button>
             </div>
             <p className="field-help">
               {mode === "sync"
                 ? "날짜와 관계없이 현재 시각의 수능 일정에 맞춥니다."
-                : "선택 과목을 5초 카운트다운 후 독립적으로 시작합니다."}
+                : mode === "subject"
+                  ? "선택 과목을 5초 카운트다운 후 독립적으로 시작합니다."
+                  : "시험 시간과 시계 시작 시각을 직접 설정합니다."}
             </p>
           </div>
 
@@ -120,6 +145,63 @@ export function LandingPage({
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+          )}
+
+          {mode === "custom" && (
+            <div className="custom-settings">
+              <div className="field">
+                <label className="field-label" htmlFor="custom-duration">
+                  시험 시간
+                </label>
+                <div className="duration-input">
+                  <input
+                    id="custom-duration"
+                    type="number"
+                    min="1"
+                    step="1"
+                    inputMode="numeric"
+                    value={customDurationMinutes}
+                    onChange={(event) =>
+                      onCustomDurationChange(Number(event.target.value))
+                    }
+                  />
+                  <span>분</span>
+                </div>
+                <p className="field-help">
+                  15분 이상 설정하면 종료 10분 전 타종이 추가됩니다.
+                </p>
+              </div>
+              <div className="field custom-start-field">
+                <span className="field-label">시계 시작 시각</span>
+                <div className="mode-grid">
+                  <button
+                    className={`mode-option compact ${
+                      customStartMode === "now" ? "active" : ""
+                    }`}
+                    onClick={() => onCustomStartModeChange("now")}
+                  >
+                    현재 시각부터
+                  </button>
+                  <button
+                    className={`mode-option compact ${
+                      customStartMode === "specific" ? "active" : ""
+                    }`}
+                    onClick={() => onCustomStartModeChange("specific")}
+                  >
+                    특정 시각부터
+                  </button>
+                </div>
+                {customStartMode === "specific" && (
+                  <input
+                    className="time-input"
+                    type="time"
+                    value={customStartTime}
+                    onChange={(event) => onCustomStartTimeChange(event.target.value)}
+                    aria-label="시계 시작 시각"
+                  />
+                )}
+              </div>
             </div>
           )}
 

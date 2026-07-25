@@ -23,6 +23,7 @@ export interface BellEvent {
   label: string;
   file: string;
   syncOnly?: boolean;
+  atSeconds?: number;
 }
 
 export interface Subject {
@@ -97,6 +98,60 @@ export const bellEvents: BellEvent[] = [
 export const toSeconds = (time: string) => {
   const [hour, minute, second] = time.split(":").map(Number);
   return hour * 3600 + minute * 60 + second;
+};
+
+export const getBellSeconds = (event: BellEvent) =>
+  event.atSeconds ?? toSeconds(event.at);
+
+export const formatClockTime = (totalSeconds: number, includeSeconds = true) => {
+  const normalized = ((Math.floor(totalSeconds) % 86400) + 86400) % 86400;
+  const hour = Math.floor(normalized / 3600);
+  const minute = Math.floor((normalized % 3600) / 60);
+  const second = normalized % 60;
+  const base = `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+  return includeSeconds
+    ? `${base}:${String(second).padStart(2, "0")}`
+    : base;
+};
+
+export const customEvents = (
+  startSeconds: number,
+  durationMinutes: number,
+): BellEvent[] => {
+  const endSeconds = startSeconds + durationMinutes * 60;
+  const events: BellEvent[] = [
+    {
+      id: "038",
+      at: formatClockTime(startSeconds),
+      atSeconds: startSeconds,
+      subject: "korean",
+      kind: "start",
+      label: "본령",
+      file: "038 본령.mp3",
+    },
+  ];
+  if (durationMinutes >= 15) {
+    const warningSeconds = endSeconds - 10 * 60;
+    events.push({
+      id: "039",
+      at: formatClockTime(warningSeconds),
+      atSeconds: warningSeconds,
+      subject: "korean",
+      kind: "warning",
+      label: "종료 10분 전",
+      file: "039 종료10분전.mp3",
+    });
+  }
+  events.push({
+    id: "040",
+    at: formatClockTime(endSeconds),
+    atSeconds: endSeconds,
+    subject: "korean",
+    kind: "end",
+    label: "종료령",
+    file: "040 종료령.mp3",
+  });
+  return events;
 };
 
 export const getSubject = (id: SubjectId) =>
