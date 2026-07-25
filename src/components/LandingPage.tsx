@@ -1,4 +1,14 @@
-import { Check, Pause, Play, Upload, Volume2, VolumeX, X } from "lucide-react";
+import {
+  BookOpenCheck,
+  Clock3,
+  Pause,
+  Play,
+  TimerReset,
+  Upload,
+  Volume2,
+  VolumeX,
+  X,
+} from "lucide-react";
 import type {
   CustomStartMode,
   ListeningTiming,
@@ -81,6 +91,13 @@ export function LandingPage({
 }: LandingPageProps) {
   const englishNeeded =
     mode === "sync" || (mode === "subject" && subjectId === "english");
+  const selectedSubject = subjects.find((subject) => subject.id === subjectId);
+  const startLabel =
+    mode === "sync"
+      ? "시간 동기화 시작"
+      : mode === "subject"
+        ? `${selectedSubject?.name ?? "과목"} 시험 시작`
+        : `${customDurationMinutes || 0}분 시험 시작`;
 
   return (
     <main className="landing">
@@ -94,36 +111,42 @@ export function LandingPage({
 
         <CardContent>
           <div className="field">
-            <span className="field-label">응시 모드</span>
-            <div className="mode-grid mode-grid-three">
+            <span className="field-label">응시 방식</span>
+            <div className="mode-tabs" role="tablist" aria-label="응시 방식">
               <button
-                className={`mode-option ${mode === "sync" ? "active" : ""}`}
+                className={`mode-tab ${mode === "sync" ? "active" : ""}`}
                 onClick={() => onModeChange("sync")}
+                role="tab"
+                aria-selected={mode === "sync"}
               >
-                <span>현재 시각 동기화 (전체 응시)</span>
-                {mode === "sync" && <Check size={16} />}
+                <Clock3 size={17} />
+                <span>시간 동기화</span>
               </button>
               <button
-                className={`mode-option ${mode === "subject" ? "active" : ""}`}
+                className={`mode-tab ${mode === "subject" ? "active" : ""}`}
                 onClick={() => onModeChange("subject")}
+                role="tab"
+                aria-selected={mode === "subject"}
               >
-                <span>과목별 응시</span>
-                {mode === "subject" && <Check size={16} />}
+                <BookOpenCheck size={17} />
+                <span>과목 선택</span>
               </button>
               <button
-                className={`mode-option ${mode === "custom" ? "active" : ""}`}
+                className={`mode-tab ${mode === "custom" ? "active" : ""}`}
                 onClick={() => onModeChange("custom")}
+                role="tab"
+                aria-selected={mode === "custom"}
               >
-                <span>시간 직접 설정</span>
-                {mode === "custom" && <Check size={16} />}
+                <TimerReset size={17} />
+                <span>자유 설정</span>
               </button>
             </div>
-            <p className="field-help">
+            <p className="mode-description">
               {mode === "sync"
-                ? "날짜와 관계없이 현재 시각의 수능 일정에 맞춥니다."
+                ? "현재 시각을 기준으로 전체 수능 시간표와 타종을 재현합니다."
                 : mode === "subject"
-                  ? "선택 과목을 5초 카운트다운 후 독립적으로 시작합니다."
-                  : "시험 시간과 시계 시작 시각을 직접 설정합니다."}
+                  ? "원하는 수능 과목 하나를 실제 시험 시간과 타종으로 응시합니다."
+                  : "시험 시간을 직접 정합니다."}
             </p>
           </div>
 
@@ -277,7 +300,7 @@ export function LandingPage({
 
         <CardFooter>
           <Button size="lg" onClick={onStart}>
-            {mode === "sync" ? "동기화 시작" : "시험 시작"}
+            {startLabel}
           </Button>
         </CardFooter>
       </Card>

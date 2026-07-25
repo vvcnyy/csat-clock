@@ -248,7 +248,47 @@ button { cursor: pointer; }
 .field-label { display: block; margin-bottom: 8px; font-size: 13px; font-weight: 500; }
 .field-help { margin: 8px 0 0; color: var(--muted-foreground); font-size: 12px; line-height: 1.5; }
 .mode-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.mode-grid-three { grid-template-columns: repeat(3, 1fr); }
+.mode-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #09090b;
+}
+.mode-tab {
+  display: flex;
+  height: 48px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 0 8px;
+  color: var(--muted-foreground);
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.mode-tab:hover { color: var(--foreground); background: #141417; }
+.mode-tab.active {
+  color: var(--foreground);
+  background: var(--muted);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .45);
+}
+.mode-tab:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
+}
+.mode-description {
+  min-height: 36px;
+  margin: 10px 2px 0;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 1.55;
+}
 .mode-option {
   display: flex;
   min-height: 42px;
@@ -616,7 +656,12 @@ button { cursor: pointer; }
   .ui-card-content { padding: 0 18px 2px; }
   .ui-card-footer { padding: 14px 18px 18px; }
   .mode-grid { grid-template-columns: 1fr; }
-  .mode-grid-three { grid-template-columns: 1fr; }
+  .mode-tab {
+    height: 46px;
+    flex-direction: column;
+    gap: 3px;
+    font-size: 11px;
+  }
   .english-settings .mode-grid { grid-template-columns: 1fr 1fr; }
   .schedule-dialog-body { grid-template-columns: 1fr; }
   .clock { border-width: 4px; }
