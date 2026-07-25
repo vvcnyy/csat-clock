@@ -672,10 +672,77 @@ button { cursor: pointer; }
   .compact-volume { grid-template-columns: 70px; gap: 2px; }
 }
 
-@media (max-height: 560px) {
-  .exam-heading p { display: none; }
+@media (max-height: 600px) and (min-aspect-ratio: 4 / 3) {
+  .exam {
+    grid-template-rows: 1fr 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    padding:
+      max(12px, env(safe-area-inset-top))
+      max(12px, env(safe-area-inset-right))
+      max(12px, env(safe-area-inset-bottom))
+      max(12px, env(safe-area-inset-left));
+  }
+  .exam-heading {
+    grid-row: 1;
+    grid-column: 1;
+    align-self: end;
+    width: 100%;
+    margin: 0 0 clamp(12px, 4vh, 24px);
+    padding: 0 clamp(16px, 4vw, 48px);
+    text-align: center;
+  }
+  .exam-heading p {
+    margin-bottom: 4px;
+    font-size: clamp(13px, 3.8vh, 20px);
+  }
+  .exam-heading h1 {
+    font-size: clamp(28px, 8vh, 48px);
+    line-height: 1.15;
+  }
   .clock {
-    width: min(600px, 58vmin, calc(100vw - 32px), calc(100dvh - 128px));
+    grid-row: 1 / -1;
+    grid-column: 2;
+    width: min(360px, calc(100dvh - 96px), calc(50vw - 88px));
+    max-height: calc(100dvh - 96px);
+    margin-block: 48px;
+  }
+  .bell-status {
+    grid-row: 2;
+    grid-column: 1;
+    align-self: start;
+    width: 100%;
+    min-height: 34px;
+    margin: clamp(12px, 4vh, 24px) 0 0;
+    padding: 0 clamp(16px, 4vw, 48px);
+    text-align: center;
+  }
+  .bell-status .status-layer {
+    font-size: clamp(20px, 5.8vh, 34px);
+  }
+  .countdown {
+    grid-row: 1 / -1;
+    grid-column: 1 / -1;
+  }
+  .exam-controls {
+    right: max(8px, env(safe-area-inset-right));
+    bottom: max(8px, env(safe-area-inset-bottom));
+    left: max(8px, env(safe-area-inset-left));
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  .listening-resume {
+    right: max(8px, env(safe-area-inset-right));
+    bottom: max(68px, calc(env(safe-area-inset-bottom) + 68px));
+  }
+  .wake-warning {
+    top: max(8px, env(safe-area-inset-top));
+    bottom: auto;
+    left: max(8px, env(safe-area-inset-left));
+    max-width: min(320px, calc(50vw - 24px));
+  }
+  .exam-error {
+    top: max(8px, env(safe-area-inset-top));
+    bottom: auto;
   }
 }
 
