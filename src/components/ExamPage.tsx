@@ -10,7 +10,7 @@ import {
 import { useEffect, useState } from "react";
 import AnalogClock from "../AnalogClock";
 import type { ListeningTiming, Session } from "../exam-types";
-import type { BellEvent, Subject } from "../schedule";
+import { toSeconds, type BellEvent, type Subject } from "../schedule";
 import type { WakeLockStatus } from "../useWakeLock";
 import {
   AlertDialog,
@@ -82,6 +82,36 @@ export function ExamPage({
 }: ExamPageProps) {
   const fullscreenSupported = Boolean(document.documentElement.requestFullscreen);
   const [isFullscreen, setIsFullscreen] = useState(Boolean(document.fullscreenElement));
+  const [displayedBellLabel, setDisplayedBellLabel] = useState(
+    currentBell?.label ?? "",
+  );
+  const [displayedExamTime, setDisplayedExamTime] = useState(
+    activeSubject
+      ? `${activeSubject.start.slice(0, 5)} ~ ${activeSubject.end.slice(0, 5)}`
+      : "",
+  );
+  const examInProgress = Boolean(
+    activeSubject &&
+      virtualSeconds >= toSeconds(activeSubject.start) &&
+      virtualSeconds < toSeconds(activeSubject.end),
+  );
+
+  useEffect(() => {
+    if (currentBell) {
+      setDisplayedBellLabel(currentBell.label);
+      return;
+    }
+    const timer = window.setTimeout(() => setDisplayedBellLabel(""), 260);
+    return () => window.clearTimeout(timer);
+  }, [currentBell]);
+
+  useEffect(() => {
+    if (activeSubject) {
+      setDisplayedExamTime(
+        `${activeSubject.start.slice(0, 5)} ~ ${activeSubject.end.slice(0, 5)}`,
+      );
+    }
+  }, [activeSubject]);
 
   useEffect(() => {
     const handleFullscreenChange = () => {
@@ -116,10 +146,23 @@ export function ExamPage({
           </header>
           <AnalogClock seconds={virtualSeconds} />
           <div
-            className={`bell-status ${currentBell ? "visible" : ""}`}
+            className="bell-status"
             aria-live="polite"
           >
-            <span>{currentBell?.label ?? ""}</span>
+            <span
+              className={`status-layer bell-label ${currentBell ? "visible" : ""}`}
+              aria-hidden={!currentBell}
+            >
+              {displayedBellLabel}
+            </span>
+            <span
+              className={`status-layer exam-time ${
+                !currentBell && examInProgress ? "visible" : ""
+              }`}
+              aria-hidden={Boolean(currentBell) || !examInProgress}
+            >
+              {displayedExamTime}
+            </span>
           </div>
         </>
       )}
