@@ -15,6 +15,7 @@ import type {
   Mode,
 } from "../exam-types";
 import { subjects, type SubjectId } from "../schedule";
+import { EbsiListeningDialog } from "./EbsiListeningDialog";
 import { ScheduleInfoDialog } from "./ScheduleInfoDialog";
 import { Button } from "./ui/button";
 import {
@@ -257,15 +258,28 @@ export function LandingPage({
               <div className="field english-file-field">
                 <span className="field-label">영어 듣기 음원</span>
                 <div className="file-row">
-                  <label className="file-picker">
-                    <input
-                      type="file"
-                      accept="audio/*"
-                      onChange={(event) => onChooseEnglishFile(event.target.files?.[0])}
-                    />
-                    <Upload size={16} />
-                    <span>{englishFile?.name ?? "듣기 파일 선택"}</span>
-                  </label>
+                  <div
+                    className={`file-source-buttons ${
+                      englishFile ? "selected" : ""
+                    }`}
+                  >
+                    <label className="file-picker">
+                      <input
+                        type="file"
+                        accept="audio/*"
+                        onChange={(event) =>
+                          onChooseEnglishFile(event.target.files?.[0])
+                        }
+                      />
+                      <Upload size={16} />
+                      <span>{englishFile?.name ?? "내 파일 불러오기"}</span>
+                    </label>
+                    {!englishFile && (
+                      <EbsiListeningDialog
+                        onChoose={(file) => onChooseEnglishFile(file)}
+                      />
+                    )}
+                  </div>
                   {englishFile && (
                     <Button
                       type="button"
