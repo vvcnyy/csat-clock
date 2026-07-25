@@ -53,7 +53,10 @@ export function useExamTimeline(
   );
 
   const countdown = session?.countdownUntil
-    ? Math.max(0, Math.ceil((session.countdownUntil - nowMs) / 1000))
+    ? Math.min(
+        COUNTDOWN_SECONDS,
+        Math.max(0, Math.ceil((session.countdownUntil - nowMs) / 1000)),
+      )
     : 0;
 
   const virtualSeconds = useMemo(() => {
