@@ -14,6 +14,7 @@ import {
 import { useWakeLock } from "./useWakeLock";
 import { useExamTimeline } from "./useExamTimeline";
 import { useAudioPreviews } from "./useAudioPreviews";
+import { useMediaSessionGuard } from "./useMediaSessionGuard";
 import {
   bellEvents,
   toSeconds,
@@ -38,6 +39,7 @@ function App() {
   const [englishFile, setEnglishFile] = useState<File>();
   const [session, setSession] = useState<Session | null>(() => readJson<Session>(SESSION_KEY));
   const wakeLock = useWakeLock(Boolean(session));
+  useMediaSessionGuard(Boolean(session));
   const {
     activeSubject,
     countdown,
