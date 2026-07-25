@@ -1,0 +1,20 @@
+{
+  "name": "수능시계 - 수능 시뮬레이터",
+  "short_name": "수능시계",
+  "description": "실제 수능 시간표와 타종에 맞춰 수능을 준비하는 무료 수능 시계",
+  "lang": "ko-KR",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#080808",
+  "theme_color": "#080808",
+  "icons": [
+    {
+      "src": "/favicon.png",
+      "sizes": "800x800",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}

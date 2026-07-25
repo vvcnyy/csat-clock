@@ -158,7 +158,7 @@ function App() {
     }
     for (const bell of nextBells) {
       if (preloadedBells.current.has(bell.id)) continue;
-      const audio = new Audio(`/${encodeURIComponent(bell.file)}`);
+      const audio = new Audio(`/sound/${encodeURIComponent(bell.file)}`);
       audio.preload = "auto";
       audio.load();
       preloadedBells.current.set(bell.id, audio);
@@ -169,7 +169,7 @@ function App() {
     (bell: BellEvent) => {
       const audio =
         preloadedBells.current.get(bell.id) ??
-        new Audio(`/${encodeURIComponent(bell.file)}`);
+        new Audio(`/sound/${encodeURIComponent(bell.file)}`);
       preloadedBells.current.delete(bell.id);
       audio.currentTime = 0;
       audio.volume = volume;

@@ -232,16 +232,11 @@ button { cursor: pointer; }
 }
 .setup-card { width: 100%; max-width: 520px; }
 .brand-mark {
-  display: grid;
-  width: 40px;
-  height: 40px;
+  display: block;
+  width: 44px;
+  height: 44px;
   flex: none;
-  place-items: center;
-  border-radius: 9px;
-  color: var(--primary-foreground);
-  background: var(--primary);
-  font-size: 16px;
-  font-weight: 800;
+  object-fit: contain;
 }
 .field { margin-bottom: 20px; }
 .field:last-child { margin-bottom: 16px; }

@@ -60,7 +60,7 @@ export function useAudioPreviews({
       return;
     }
     const sample = bellEvents.find((event) => event.kind === "preliminary")!;
-    const audio = new Audio(`/${encodeURIComponent(sample.file)}`);
+    const audio = new Audio(`/sound/${encodeURIComponent(sample.file)}`);
     audio.volume = bellVolume;
     bellAudio.current = audio;
     setPreviewing(true);

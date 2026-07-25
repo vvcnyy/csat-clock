@@ -103,6 +103,13 @@ export function LandingPage({
     <main className="landing">
       <Card className="setup-card">
         <CardHeader>
+          <img
+            className="brand-mark"
+            src="/favicon.png"
+            alt=""
+            width={44}
+            height={44}
+          />
           <div>
             <CardTitle>수능시계</CardTitle>
             <CardDescription>수능 시간표와 실제 타종으로 연습합니다.</CardDescription>
