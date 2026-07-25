@@ -44,6 +44,7 @@ interface ExamPageProps {
   volume: number;
   listeningVolume: number;
   listeningResumeRequired: boolean;
+  examCompleted: boolean;
   audioError: string;
   onRevealControls: () => void;
   onSkip: (target: number) => void;
@@ -68,6 +69,7 @@ export function ExamPage({
   volume,
   listeningVolume,
   listeningResumeRequired,
+  examCompleted,
   audioError,
   onRevealControls,
   onSkip,
@@ -206,6 +208,11 @@ export function ExamPage({
         </div>
       )}
       {audioError && <div className="exam-error">{audioError}</div>}
+      <ExamCompletedDialog
+        open={examCompleted}
+        subjectName={activeSubject?.name ?? "시험"}
+        onReturn={onExit}
+      />
     </main>
   );
 }
@@ -249,6 +256,34 @@ function ExitExamDialog({ onExit }: { onExit: () => void }) {
         <AlertDialogFooter>
           <AlertDialogCancel>계속 응시</AlertDialogCancel>
           <AlertDialogAction onClick={onExit}>시험 종료</AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+}
+
+function ExamCompletedDialog({
+  open,
+  subjectName,
+  onReturn,
+}: {
+  open: boolean;
+  subjectName: string;
+  onReturn: () => void;
+}) {
+  return (
+    <AlertDialog open={open}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>시험이 종료되었습니다</AlertDialogTitle>
+          <AlertDialogDescription>
+            {subjectName} 시험이 모두 끝났습니다.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogAction onClick={onReturn}>
+            시작 화면으로 돌아가기
+          </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>

@@ -18,6 +18,7 @@ export interface Session {
 export const SESSION_KEY = "mogo-clock-session";
 export const SETTINGS_KEY = "mogo-clock-settings";
 export const COUNTDOWN_SECONDS = 5;
+export const EXAM_COMPLETION_DELAY_SECONDS = 5 * 60;
 
 export const secondsNow = () => {
   const now = new Date();

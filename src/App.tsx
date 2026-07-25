@@ -3,6 +3,7 @@ import { ExamPage } from "./components/ExamPage";
 import { LandingPage } from "./components/LandingPage";
 import {
   COUNTDOWN_SECONDS,
+  EXAM_COMPLETION_DELAY_SECONDS,
   readJson,
   SESSION_KEY,
   SETTINGS_KEY,
@@ -47,6 +48,7 @@ function App() {
   } = useExamTimeline(session, subjectId, listeningTiming);
   const [currentBell, setCurrentBell] = useState<BellEvent | null>(null);
   const [controlsVisible, setControlsVisible] = useState(false);
+  const [examCompleted, setExamCompleted] = useState(false);
   const [audioError, setAudioError] = useState("");
   const previousVirtual = useRef<number | null>(null);
   const playedEvents = useRef(new Set<string>());
@@ -256,8 +258,11 @@ function App() {
 
   useEffect(() => {
     if (!session || session.mode !== "subject" || session.pausedAt || countdown > 0) return;
-    if (virtualSeconds >= toSeconds(selectedSubject.end) + 2) {
-      // 종료령 재생이 시작된 후 화면은 유지한다.
+    if (
+      virtualSeconds >=
+      toSeconds(selectedSubject.end) + EXAM_COMPLETION_DELAY_SECONDS
+    ) {
+      setExamCompleted(true);
       setControlsVisible(true);
     }
   }, [countdown, selectedSubject.end, session, virtualSeconds]);
@@ -333,6 +338,7 @@ function App() {
     listeningResumeChecked.current = true;
     previousVirtual.current = null;
     setCurrentBell(null);
+    setExamCompleted(false);
     setAudioError("");
     setSession({
       mode,
@@ -386,6 +392,7 @@ function App() {
 
     bellAudio.current?.pause();
     setCurrentBell(null);
+    setExamCompleted(false);
     for (const bell of subjectEvents) {
       if (toSeconds(bell.at) < targetSeconds) playedEvents.current.add(bell.id);
     }
@@ -510,6 +517,7 @@ function App() {
       volume={volume}
       listeningVolume={listeningVolume}
       listeningResumeRequired={listeningResumeRequired}
+      examCompleted={examCompleted}
       audioError={audioError}
       onRevealControls={revealControls}
       onSkip={skipTo}
