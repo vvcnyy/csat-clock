@@ -19,8 +19,16 @@ export function useExamTimeline(
   const [nowMs, setNowMs] = useState(Date.now());
 
   useEffect(() => {
-    const timer = window.setInterval(() => setNowMs(Date.now()), 200);
-    return () => window.clearInterval(timer);
+    let timer: number;
+    const scheduleNextTick = () => {
+      const delay = 1000 - (Date.now() % 1000) + 20;
+      timer = window.setTimeout(() => {
+        setNowMs(Date.now());
+        scheduleNextTick();
+      }, delay);
+    };
+    scheduleNextTick();
+    return () => window.clearTimeout(timer);
   }, []);
 
   const regularSubject = getSubject(session?.subjectId ?? selectedSubjectId);

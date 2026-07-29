@@ -73,7 +73,10 @@ function App() {
   const previousVirtual = useRef<number | null>(null);
   const playedEvents = useRef(new Set<string>());
   const bellAudio = useRef<HTMLAudioElement | undefined>(undefined);
-  const preloadedBells = useRef(new Map<string, HTMLAudioElement>());
+  const prefetchedBells = useRef(new Map<string, string>());
+  const pendingBellFetches = useRef(new Set<string>());
+  const desiredPrefetchIds = useRef(new Set<string>());
+  const currentBellObjectUrl = useRef<string | undefined>(undefined);
   const listeningAudio = useRef<HTMLAudioElement | undefined>(undefined);
   const [listeningResumeRequired, setListeningResumeRequired] = useState(false);
   const listeningPlayed = useRef(false);
@@ -126,19 +129,20 @@ function App() {
     listeningTiming,
   ]);
 
-  const clearPreloadedBells = useCallback(() => {
-    for (const audio of preloadedBells.current.values()) {
-      audio.removeAttribute("src");
-      audio.load();
+  const clearBellPrefetch = useCallback(() => {
+    desiredPrefetchIds.current.clear();
+    for (const url of prefetchedBells.current.values()) {
+      URL.revokeObjectURL(url);
     }
-    preloadedBells.current.clear();
+    prefetchedBells.current.clear();
   }, []);
 
   useEffect(() => {
     if (!session) {
-      clearPreloadedBells();
+      clearBellPrefetch();
       return;
     }
+
     const candidates = session.mode === "sync" ? bellEvents : subjectEvents;
     const nextBells = candidates
       .filter(
@@ -148,38 +152,81 @@ function App() {
       )
       .slice(0, 2);
     const nextIds = new Set(nextBells.map((bell) => bell.id));
+    desiredPrefetchIds.current = nextIds;
 
-    for (const [id, audio] of preloadedBells.current) {
+    for (const [id, url] of prefetchedBells.current) {
       if (!nextIds.has(id)) {
-        audio.removeAttribute("src");
-        audio.load();
-        preloadedBells.current.delete(id);
+        URL.revokeObjectURL(url);
+        prefetchedBells.current.delete(id);
       }
     }
+
     for (const bell of nextBells) {
-      if (preloadedBells.current.has(bell.id)) continue;
-      const audio = new Audio(`/sound/${encodeURIComponent(bell.file)}`);
-      audio.preload = "auto";
-      audio.load();
-      preloadedBells.current.set(bell.id, audio);
+      if (
+        prefetchedBells.current.has(bell.id) ||
+        pendingBellFetches.current.has(bell.id)
+      ) {
+        continue;
+      }
+
+      pendingBellFetches.current.add(bell.id);
+      const url = `/sound/${encodeURIComponent(bell.file)}`;
+      void fetch(url)
+        .then((response) => {
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          return response.blob();
+        })
+        .then((blob) => {
+          if (!desiredPrefetchIds.current.has(bell.id)) return;
+          prefetchedBells.current.set(bell.id, URL.createObjectURL(blob));
+        })
+        .then(
+          () => pendingBellFetches.current.delete(bell.id),
+          () => pendingBellFetches.current.delete(bell.id),
+        );
     }
-  }, [clearPreloadedBells, session, subjectEvents, virtualSeconds]);
+  }, [
+    clearBellPrefetch,
+    session,
+    subjectEvents,
+    virtualSeconds,
+  ]);
 
   const playBell = useCallback(
     (bell: BellEvent) => {
-      const audio =
-        preloadedBells.current.get(bell.id) ??
-        new Audio(`/sound/${encodeURIComponent(bell.file)}`);
-      preloadedBells.current.delete(bell.id);
-      audio.currentTime = 0;
-      audio.volume = volume;
-      bellAudio.current?.pause();
+      const prefetchedUrl = prefetchedBells.current.get(bell.id);
+      const url =
+        prefetchedUrl ?? `/sound/${encodeURIComponent(bell.file)}`;
+      prefetchedBells.current.delete(bell.id);
+      const audio = bellAudio.current ?? new Audio();
       bellAudio.current = audio;
+
+      audio.pause();
+      if (currentBellObjectUrl.current) {
+        URL.revokeObjectURL(currentBellObjectUrl.current);
+      }
+      currentBellObjectUrl.current = prefetchedUrl;
+      audio.src = url;
+      audio.preload = "auto";
+      audio.volume = volume;
+      audio.onerror = () => {
+        if (currentBellObjectUrl.current === prefetchedUrl && prefetchedUrl) {
+          URL.revokeObjectURL(prefetchedUrl);
+          currentBellObjectUrl.current = undefined;
+        }
+        setAudioError(`${bell.label} 음원을 불러오지 못했습니다.`);
+      };
+      audio.onended = () => {
+        if (currentBellObjectUrl.current === prefetchedUrl && prefetchedUrl) {
+          URL.revokeObjectURL(prefetchedUrl);
+          currentBellObjectUrl.current = undefined;
+        }
+        setCurrentBell((current) => (current?.id === bell.id ? null : current));
+      };
+      audio.load();
       setCurrentBell(bell);
       setAudioError("");
       audio.play().catch(() => setAudioError("브라우저에서 소리 재생을 차단했습니다."));
-      audio.onerror = () => setAudioError(`${bell.label} 음원을 불러오지 못했습니다.`);
-      audio.onended = () => setCurrentBell((current) => (current?.id === bell.id ? null : current));
     },
     [volume],
   );
@@ -216,6 +263,70 @@ function App() {
       listeningWasPlayingBeforePause.current = false;
     };
   }, [englishFile, listeningVolume]);
+
+  useEffect(() => {
+    if (!session || session.pausedAt || countdown > 0) return;
+
+    const candidates = session.mode === "sync" ? bellEvents : subjectEvents;
+    const firstEventSeconds = candidates[0]
+      ? getBellSeconds(candidates[0])
+      : toSeconds(selectedSubject.start);
+    const delayUntil = (targetSeconds: number) => {
+      if (session.mode === "sync") {
+        const now = new Date();
+        const target = new Date(now);
+        target.setHours(
+          Math.floor(targetSeconds / 3600),
+          Math.floor((targetSeconds % 3600) / 60),
+          targetSeconds % 60,
+          0,
+        );
+        return target.getTime() - now.getTime();
+      }
+      const targetMs =
+        session.startedAt +
+        session.pausedTotal +
+        COUNTDOWN_SECONDS * 1000 +
+        (targetSeconds - firstEventSeconds) * 1000;
+      return targetMs - Date.now();
+    };
+
+    const timers: number[] = [];
+    for (const bell of candidates) {
+      if (playedEvents.current.has(bell.id)) continue;
+      const delay = delayUntil(getBellSeconds(bell));
+      if (delay <= 0) continue;
+      timers.push(window.setTimeout(() => {
+        if (playedEvents.current.has(bell.id)) return;
+        playedEvents.current.add(bell.id);
+        playBell(bell);
+      }, delay));
+    }
+
+    const englishActive =
+      session.mode === "sync" || session.subjectId === "english";
+    if (englishActive && !listeningPlayed.current) {
+      const listeningAt = toSeconds(
+        listeningTiming === "before" ? "13:07:00" : "13:10:00",
+      );
+      const delay = delayUntil(listeningAt);
+      if (delay > 0) {
+        timers.push(window.setTimeout(() => void playListening(), delay));
+      }
+    }
+
+    return () => {
+      for (const timer of timers) window.clearTimeout(timer);
+    };
+  }, [
+    countdown,
+    listeningTiming,
+    playBell,
+    playListening,
+    selectedSubject.start,
+    session,
+    subjectEvents,
+  ]);
 
   useEffect(() => {
     if (
@@ -359,11 +470,18 @@ function App() {
     }
     stopBellPreview();
     stopListeningPreview();
-    clearPreloadedBells();
+    clearBellPrefetch();
     if (bellAudio.current) {
       bellAudio.current.pause();
-      bellAudio.current.currentTime = 0;
-      bellAudio.current = undefined;
+      try {
+        bellAudio.current.currentTime = 0;
+      } catch {
+        // Metadata가 없는 구형 TV 브라우저에서는 탐색이 실패할 수 있습니다.
+      }
+    }
+    if (currentBellObjectUrl.current) {
+      URL.revokeObjectURL(currentBellObjectUrl.current);
+      currentBellObjectUrl.current = undefined;
     }
     if (listeningAudio.current) {
       listeningAudio.current.pause();
@@ -478,8 +596,12 @@ function App() {
   const exitExam = () => {
     stopBellPreview();
     stopListeningPreview();
-    clearPreloadedBells();
+    clearBellPrefetch();
     bellAudio.current?.pause();
+    if (currentBellObjectUrl.current) {
+      URL.revokeObjectURL(currentBellObjectUrl.current);
+      currentBellObjectUrl.current = undefined;
+    }
     listeningAudio.current?.pause();
     setSession(null);
     setCurrentBell(null);
