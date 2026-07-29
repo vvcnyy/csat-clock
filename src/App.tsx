@@ -265,6 +265,70 @@ function App() {
   }, [englishFile, listeningVolume]);
 
   useEffect(() => {
+    if (!session || session.pausedAt || countdown > 0) return;
+
+    const candidates = session.mode === "sync" ? bellEvents : subjectEvents;
+    const firstEventSeconds = candidates[0]
+      ? getBellSeconds(candidates[0])
+      : toSeconds(selectedSubject.start);
+    const delayUntil = (targetSeconds: number) => {
+      if (session.mode === "sync") {
+        const now = new Date();
+        const target = new Date(now);
+        target.setHours(
+          Math.floor(targetSeconds / 3600),
+          Math.floor((targetSeconds % 3600) / 60),
+          targetSeconds % 60,
+          0,
+        );
+        return target.getTime() - now.getTime();
+      }
+      const targetMs =
+        session.startedAt +
+        session.pausedTotal +
+        COUNTDOWN_SECONDS * 1000 +
+        (targetSeconds - firstEventSeconds) * 1000;
+      return targetMs - Date.now();
+    };
+
+    const timers: number[] = [];
+    for (const bell of candidates) {
+      if (playedEvents.current.has(bell.id)) continue;
+      const delay = delayUntil(getBellSeconds(bell));
+      if (delay <= 0) continue;
+      timers.push(window.setTimeout(() => {
+        if (playedEvents.current.has(bell.id)) return;
+        playedEvents.current.add(bell.id);
+        playBell(bell);
+      }, delay));
+    }
+
+    const englishActive =
+      session.mode === "sync" || session.subjectId === "english";
+    if (englishActive && !listeningPlayed.current) {
+      const listeningAt = toSeconds(
+        listeningTiming === "before" ? "13:07:00" : "13:10:00",
+      );
+      const delay = delayUntil(listeningAt);
+      if (delay > 0) {
+        timers.push(window.setTimeout(() => void playListening(), delay));
+      }
+    }
+
+    return () => {
+      for (const timer of timers) window.clearTimeout(timer);
+    };
+  }, [
+    countdown,
+    listeningTiming,
+    playBell,
+    playListening,
+    selectedSubject.start,
+    session,
+    subjectEvents,
+  ]);
+
+  useEffect(() => {
     if (
       !restoredOnLoad.current ||
       listeningResumeChecked.current ||
