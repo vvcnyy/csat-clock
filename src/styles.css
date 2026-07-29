@@ -720,41 +720,6 @@ button { cursor: pointer; }
   white-space: nowrap;
 }
 
-.audio-debug {
-  position: fixed;
-  z-index: 30;
-  right: 12px;
-  bottom: 12px;
-  width: min(760px, calc(100vw - 24px));
-  max-height: 46vh;
-  overflow: auto;
-  padding: 8px 10px;
-  border: 1px solid rgba(255, 255, 255, 0.28);
-  border-radius: 8px;
-  background: rgba(8, 12, 20, 0.94);
-  color: #e8eefb;
-  font-size: 12px;
-  text-align: left;
-}
-
-.audio-debug summary {
-  cursor: pointer;
-  font-weight: 700;
-}
-
-.audio-debug-legend {
-  margin: 8px 0;
-  color: #aebbd0;
-  line-height: 1.45;
-}
-
-.audio-debug pre {
-  margin: 0;
-  overflow-wrap: anywhere;
-  white-space: pre-wrap;
-  font: 11px/1.45 ui-monospace, SFMono-Regular, Consolas, monospace;
-}
-
 @media (max-width: 560px) {
   .landing { place-items: start center; padding: 12px; }
   .setup-card { margin-top: 12px; }

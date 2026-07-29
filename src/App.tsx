@@ -70,7 +70,6 @@ function App() {
   const [controlsVisible, setControlsVisible] = useState(false);
   const [examCompleted, setExamCompleted] = useState(false);
   const [audioError, setAudioError] = useState("");
-  const [audioDebugLog, setAudioDebugLog] = useState<string[]>([]);
   const previousVirtual = useRef<number | null>(null);
   const playedEvents = useRef(new Set<string>());
   const bellAudio = useRef<HTMLAudioElement | undefined>(undefined);
@@ -81,18 +80,6 @@ function App() {
   const restoredOnLoad = useRef(Boolean(readJson<Session>(SESSION_KEY)));
   const listeningResumeChecked = useRef(false);
   const controlsTimer = useRef<number | undefined>(undefined);
-  const addAudioDebug = useCallback((message: string) => {
-    const now = new Date();
-    const time = [
-      now.getHours(),
-      now.getMinutes(),
-      now.getSeconds(),
-    ].map((value) => String(value).padStart(2, "0")).join(":");
-    const milliseconds = String(now.getMilliseconds()).padStart(3, "0");
-    setAudioDebugLog((current) =>
-      [...current, `${time}.${milliseconds} ${message}`].slice(-40),
-    );
-  }, []);
   const {
     listeningPreviewing,
     previewing,
@@ -142,66 +129,21 @@ function App() {
     (bell: BellEvent) => {
       const url = `/sound/${encodeURIComponent(bell.file)}`;
       const audio = bellAudio.current ?? new Audio();
-      const reused = Boolean(bellAudio.current);
       bellAudio.current = audio;
-      const describe = () =>
-        `id=${bell.id} network=${audio.networkState} ready=${audio.readyState} ` +
-        `paused=${audio.paused} ended=${audio.ended} current=${audio.currentTime} ` +
-        `duration=${audio.duration} src=${audio.currentSrc || url}`;
-      const logEvent = (name: string) => () =>
-        addAudioDebug(`[bell:${name}] ${describe()}`);
-
-      audio.onloadstart = logEvent("loadstart");
-      audio.onloadedmetadata = logEvent("metadata");
-      audio.oncanplay = logEvent("canplay");
-      audio.onplaying = logEvent("playing");
-      audio.onwaiting = logEvent("waiting");
-      audio.onstalled = logEvent("stalled");
-      audio.onabort = logEvent("abort");
-      audio.onerror = () => {
-        const error = audio.error;
-        const errorNames: Record<number, string> = {
-          1: "MEDIA_ERR_ABORTED",
-          2: "MEDIA_ERR_NETWORK",
-          3: "MEDIA_ERR_DECODE",
-          4: "MEDIA_ERR_SRC_NOT_SUPPORTED",
-        };
-        const detail =
-          `code=${error?.code ?? "null"} ` +
-          `name=${error ? errorNames[error.code] ?? "UNKNOWN" : "NO_MEDIA_ERROR"} ` +
-          `message=${error?.message || "-"} ${describe()}`;
-        addAudioDebug(`[bell:error] ${detail}`);
-        setAudioError(`${bell.label} 음원 오류: ${detail}`);
-      };
-      audio.onended = () => {
-        addAudioDebug(`[bell:ended] ${describe()}`);
-        setCurrentBell((current) => (current?.id === bell.id ? null : current));
-      };
 
       audio.pause();
       audio.src = url;
       audio.preload = "auto";
       audio.volume = volume;
+      audio.onerror = () => setAudioError(`${bell.label} 음원을 불러오지 못했습니다.`);
+      audio.onended = () =>
+        setCurrentBell((current) => (current?.id === bell.id ? null : current));
       audio.load();
       setCurrentBell(bell);
       setAudioError("");
-      addAudioDebug(
-        `[bell:play-call] singlePlayer=true reused=${reused} volume=${volume} ` +
-        `canPlayMp3=${audio.canPlayType("audio/mpeg") || "(empty)"} ${describe()}`,
-      );
-      audio.play().then(
-        () => addAudioDebug(`[bell:play-resolved] ${describe()}`),
-        (error: unknown) => {
-          const value = error as { name?: string; message?: string; code?: number };
-          const detail =
-            `name=${value?.name || typeof error} code=${value?.code ?? "-"} ` +
-            `message=${value?.message || String(error)} ${describe()}`;
-          addAudioDebug(`[bell:play-rejected] ${detail}`);
-          setAudioError(`타종 재생 실패: ${detail}`);
-        },
-      );
+      audio.play().catch(() => setAudioError("브라우저에서 소리 재생을 차단했습니다."));
     },
-    [addAudioDebug, volume],
+    [volume],
   );
 
   const playListening = useCallback(async (offsetSeconds = 0) => {
@@ -408,12 +350,6 @@ function App() {
     setCurrentBell(null);
     setExamCompleted(false);
     setAudioError("");
-    setAudioDebugLog([
-      `[환경] UA=${navigator.userAgent}`,
-      `[환경] online=${navigator.onLine} visibility=${document.visibilityState} ` +
-        `mp3=${document.createElement("audio").canPlayType("audio/mpeg") || "(empty)"}`,
-      `[시작] mode=${mode} volume=${volume} time=${new Date(startedAt).toISOString()}`,
-    ]);
     setSession({
       mode,
       subjectId: mode === "subject" ? subjectId : undefined,
@@ -604,7 +540,6 @@ function App() {
       listeningResumeRequired={listeningResumeRequired}
       examCompleted={examCompleted}
       audioError={audioError}
-      audioDebugLog={audioDebugLog}
       onRevealControls={revealControls}
       onSkip={skipTo}
       onTogglePause={togglePause}
