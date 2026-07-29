@@ -52,6 +52,7 @@ interface ExamPageProps {
   listeningResumeRequired: boolean;
   examCompleted: boolean;
   audioError: string;
+  audioDebugLog: string[];
   onRevealControls: () => void;
   onSkip: (target: number) => void;
   onTogglePause: () => void;
@@ -78,6 +79,7 @@ export function ExamPage({
   listeningResumeRequired,
   examCompleted,
   audioError,
+  audioDebugLog,
   onRevealControls,
   onSkip,
   onTogglePause,
@@ -253,6 +255,18 @@ export function ExamPage({
         </div>
       )}
       {audioError && <div className="exam-error">{audioError}</div>}
+      <details className="audio-debug" open={Boolean(audioError)}>
+        <summary>오디오 진단 로그 ({audioDebugLog.length})</summary>
+        <div className="audio-debug-legend">
+          network: 0=EMPTY, 1=IDLE, 2=LOADING, 3=NO_SOURCE ·
+          ready: 0=NOTHING, 1=METADATA, 2=CURRENT, 3=FUTURE, 4=ENOUGH
+        </div>
+        <pre>
+          {audioDebugLog.length
+            ? audioDebugLog.join("\n")
+            : "아직 기록된 오디오 이벤트가 없습니다."}
+        </pre>
+      </details>
       <ExamCompletedDialog
         open={examCompleted}
         subjectName={activeSubject?.name ?? "시험"}
