@@ -300,6 +300,52 @@ button { cursor: pointer; }
 .mode-option:hover { color: var(--foreground); background: #141417; }
 .mode-option.active { color: var(--foreground); border-color: #71717a; background: #18181b; }
 .mode-option.compact { justify-content: center; }
+.subject-settings {
+  margin: 0 0 20px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: #0b0b0e;
+}
+.subject-settings .field { margin-bottom: 14px; }
+.ui-checkbox {
+  display: inline-flex;
+  width: 20px;
+  height: 20px;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  color: #09090b;
+  border: 1px solid #52525b;
+  border-radius: 5px;
+  background: #09090b;
+}
+.ui-checkbox[data-state="checked"] {
+  border-color: #fafafa;
+  background: #fafafa;
+}
+.ui-checkbox:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+.ui-checkbox-indicator { display: flex; }
+.checkbox-setting {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  cursor: pointer;
+}
+.checkbox-setting > span {
+  display: grid;
+  gap: 3px;
+  line-height: 1.35;
+}
+.checkbox-setting strong { font-size: 13px; font-weight: 500; }
+.checkbox-setting small {
+  color: var(--muted-foreground);
+  font-size: 11px;
+}
 .english-settings {
   margin: 0 0 20px;
   padding: 16px;

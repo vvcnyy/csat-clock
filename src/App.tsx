@@ -29,6 +29,7 @@ import { clearEnglishFile, loadEnglishFile, saveEnglishFile } from "./storage";
 function App() {
   const savedSettings = readJson<
     Pick<Session, "volume" | "listeningVolume" | "listeningTiming"> & {
+      startAtMainBell?: boolean;
       customDurationMinutes?: number;
       customStartMode?: CustomStartMode;
       customStartTime?: string;
@@ -42,6 +43,9 @@ function App() {
   );
   const [listeningTiming, setListeningTiming] = useState<ListeningTiming>(
     savedSettings?.listeningTiming ?? "before",
+  );
+  const [startAtMainBell, setStartAtMainBell] = useState(
+    savedSettings?.startAtMainBell ?? false,
   );
   const [customDurationMinutes, setCustomDurationMinutes] = useState(
     savedSettings?.customDurationMinutes ?? 60,
@@ -114,6 +118,7 @@ function App() {
         volume,
         listeningVolume,
         listeningTiming,
+        startAtMainBell,
         customDurationMinutes,
         customStartMode,
         customStartTime,
@@ -127,6 +132,7 @@ function App() {
     volume,
     listeningVolume,
     listeningTiming,
+    startAtMainBell,
   ]);
 
   const clearBellPrefetch = useCallback(() => {
@@ -268,9 +274,12 @@ function App() {
     if (!session || session.pausedAt || countdown > 0) return;
 
     const candidates = session.mode === "sync" ? bellEvents : subjectEvents;
-    const firstEventSeconds = candidates[0]
-      ? getBellSeconds(candidates[0])
-      : toSeconds(selectedSubject.start);
+    const firstEventSeconds =
+      session.startAtMainBell && session.mode === "subject"
+        ? toSeconds(selectedSubject.start)
+        : candidates[0]
+          ? getBellSeconds(candidates[0])
+          : toSeconds(selectedSubject.start);
     const delayUntil = (targetSeconds: number) => {
       if (session.mode === "sync") {
         const now = new Date();
@@ -312,6 +321,12 @@ function App() {
       const delay = delayUntil(listeningAt);
       if (delay > 0) {
         timers.push(window.setTimeout(() => void playListening(), delay));
+      } else if (
+        session.mode === "subject" &&
+        session.startAtMainBell &&
+        virtualSeconds >= listeningAt
+      ) {
+        void playListening(virtualSeconds - listeningAt);
       }
     }
 
@@ -326,6 +341,7 @@ function App() {
     selectedSubject.start,
     session,
     subjectEvents,
+    virtualSeconds,
   ]);
 
   useEffect(() => {
@@ -514,6 +530,7 @@ function App() {
       volume,
       listeningVolume,
       listeningTiming,
+      startAtMainBell: mode === "subject" ? startAtMainBell : undefined,
       customDurationMinutes:
         mode === "custom" ? safeCustomDuration : undefined,
       customStartSeconds:
@@ -658,6 +675,7 @@ function App() {
         volume={volume}
         listeningVolume={listeningVolume}
         listeningTiming={listeningTiming}
+        startAtMainBell={startAtMainBell}
         customDurationMinutes={customDurationMinutes}
         customStartMode={customStartMode}
         customStartTime={customStartTime}
@@ -670,6 +688,7 @@ function App() {
         onVolumeChange={setVolume}
         onListeningVolumeChange={setListeningVolume}
         onListeningTimingChange={setListeningTiming}
+        onStartAtMainBellChange={setStartAtMainBell}
         onCustomDurationChange={setCustomDurationMinutes}
         onCustomStartModeChange={setCustomStartMode}
         onCustomStartTimeChange={setCustomStartTime}

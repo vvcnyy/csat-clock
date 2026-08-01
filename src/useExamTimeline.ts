@@ -69,9 +69,12 @@ export function useExamTimeline(
 
   const virtualSeconds = useMemo(() => {
     if (!session || session.mode === "sync") return secondsNow();
-    const firstEvent = subjectEvents[0]
-      ? getBellSeconds(subjectEvents[0])
-      : toSeconds(selectedSubject.start);
+    const firstEvent =
+      session.startAtMainBell && session.mode === "subject"
+        ? toSeconds(selectedSubject.start)
+        : subjectEvents[0]
+          ? getBellSeconds(subjectEvents[0])
+          : toSeconds(selectedSubject.start);
     const clockMs = session.pausedAt ?? nowMs;
     const elapsed = Math.max(
       0,
