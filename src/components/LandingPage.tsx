@@ -26,6 +26,7 @@ import {
   CardHeader,
   CardTitle,
 } from "./ui/card";
+import { Checkbox } from "./ui/checkbox";
 import {
   Select,
   SelectContent,
@@ -41,6 +42,7 @@ interface LandingPageProps {
   volume: number;
   listeningVolume: number;
   listeningTiming: ListeningTiming;
+  startAtMainBell: boolean;
   customDurationMinutes: number;
   customStartMode: CustomStartMode;
   customStartTime: string;
@@ -53,6 +55,7 @@ interface LandingPageProps {
   onVolumeChange: (volume: number) => void;
   onListeningVolumeChange: (volume: number) => void;
   onListeningTimingChange: (timing: ListeningTiming) => void;
+  onStartAtMainBellChange: (checked: boolean) => void;
   onCustomDurationChange: (minutes: number) => void;
   onCustomStartModeChange: (mode: CustomStartMode) => void;
   onCustomStartTimeChange: (time: string) => void;
@@ -69,6 +72,7 @@ export function LandingPage({
   volume,
   listeningVolume,
   listeningTiming,
+  startAtMainBell,
   customDurationMinutes,
   customStartMode,
   customStartTime,
@@ -81,6 +85,7 @@ export function LandingPage({
   onVolumeChange,
   onListeningVolumeChange,
   onListeningTimingChange,
+  onStartAtMainBellChange,
   onCustomDurationChange,
   onCustomStartModeChange,
   onCustomStartTimeChange,
@@ -159,23 +164,38 @@ export function LandingPage({
           </div>
 
           {mode === "subject" && (
-            <div className="field">
-              <span className="field-label">응시 과목</span>
-              <Select
-                value={subjectId}
-                onValueChange={(value) => onSubjectChange(value as SubjectId)}
-              >
-                <SelectTrigger aria-label="응시 과목">
-                  <SelectValue className="ui-select-value" />
-                </SelectTrigger>
-                <SelectContent>
-                  {subjects.map((subject) => (
-                    <SelectItem value={subject.id} key={subject.id}>
-                      {subject.period} · {subject.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <div className="subject-settings">
+              <div className="field">
+                <span className="field-label">응시 과목</span>
+                <Select
+                  value={subjectId}
+                  onValueChange={(value) => onSubjectChange(value as SubjectId)}
+                >
+                  <SelectTrigger aria-label="응시 과목">
+                    <SelectValue className="ui-select-value" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {subjects.map((subject) => (
+                      <SelectItem value={subject.id} key={subject.id}>
+                        {subject.period} · {subject.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <label className="checkbox-setting" htmlFor="start-at-main-bell">
+                <Checkbox
+                  id="start-at-main-bell"
+                  checked={startAtMainBell}
+                  onCheckedChange={(checked) =>
+                    onStartAtMainBellChange(checked === true)
+                  }
+                />
+                <span>
+                  <strong>바로 본령으로 시작</strong>
+                  <small>예비령과 준비령을 건너뛰고 시험 시작 시각부터 진행합니다.</small>
+                </span>
+              </label>
             </div>
           )}
 

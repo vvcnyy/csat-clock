@@ -14,6 +14,7 @@ export interface Session {
   volume: number;
   listeningVolume: number;
   listeningTiming: ListeningTiming;
+  startAtMainBell?: boolean;
   customDurationMinutes?: number;
   customStartSeconds?: number;
 }
