@@ -25,6 +25,7 @@ import {
   type SubjectId,
 } from "./schedule";
 import { clearEnglishFile, loadEnglishFile, saveEnglishFile } from "./storage";
+import { formatAudioError } from "./audio-errors";
 
 function App() {
   const savedSettings = readJson<
@@ -143,6 +144,14 @@ function App() {
     prefetchedBells.current.clear();
   }, []);
 
+  const getBellFile = useCallback(
+    (bell: BellEvent) =>
+      session?.mode === "subject" && bell.shortFile
+        ? bell.shortFile
+        : bell.file,
+    [session?.mode],
+  );
+
   useEffect(() => {
     if (!session) {
       clearBellPrefetch();
@@ -176,7 +185,7 @@ function App() {
       }
 
       pendingBellFetches.current.add(bell.id);
-      const url = `/sound/${encodeURIComponent(bell.file)}`;
+      const url = `/sound/${encodeURIComponent(getBellFile(bell))}`;
       void fetch(url)
         .then((response) => {
           if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -193,6 +202,7 @@ function App() {
     }
   }, [
     clearBellPrefetch,
+    getBellFile,
     session,
     subjectEvents,
     virtualSeconds,
@@ -202,7 +212,7 @@ function App() {
     (bell: BellEvent) => {
       const prefetchedUrl = prefetchedBells.current.get(bell.id);
       const url =
-        prefetchedUrl ?? `/sound/${encodeURIComponent(bell.file)}`;
+        prefetchedUrl ?? `/sound/${encodeURIComponent(getBellFile(bell))}`;
       prefetchedBells.current.delete(bell.id);
       const audio = bellAudio.current ?? new Audio();
       bellAudio.current = audio;
@@ -220,7 +230,7 @@ function App() {
           URL.revokeObjectURL(prefetchedUrl);
           currentBellObjectUrl.current = undefined;
         }
-        setAudioError(`${bell.label} 음원을 불러오지 못했습니다.`);
+        setAudioError(formatAudioError(bell.label, undefined, audio.error));
       };
       audio.onended = () => {
         if (currentBellObjectUrl.current === prefetchedUrl && prefetchedUrl) {
@@ -232,9 +242,11 @@ function App() {
       audio.load();
       setCurrentBell(bell);
       setAudioError("");
-      audio.play().catch(() => setAudioError("브라우저에서 소리 재생을 차단했습니다."));
+      audio.play().catch((error: unknown) =>
+        setAudioError(formatAudioError(bell.label, error, audio.error)),
+      );
     },
-    [volume],
+    [getBellFile, volume],
   );
 
   const playListening = useCallback(async (offsetSeconds = 0) => {
@@ -244,6 +256,10 @@ function App() {
     const audio = new Audio(url);
     audio.volume = listeningVolume;
     listeningAudio.current = audio;
+    audio.onerror = () => {
+      listeningPlayed.current = false;
+      setAudioError(formatAudioError("영어 듣기", undefined, audio.error));
+    };
     const startPlayback = () => {
       if (Number.isFinite(audio.duration) && offsetSeconds >= audio.duration) {
         URL.revokeObjectURL(url);
@@ -256,9 +272,10 @@ function App() {
       audio
         .play()
         .then(() => setListeningResumeRequired(false))
-        .catch(() => {
+        .catch((error: unknown) => {
           listeningPlayed.current = false;
           if (offsetSeconds > 0) setListeningResumeRequired(true);
+          setAudioError(formatAudioError("영어 듣기", error, audio.error));
         });
     };
     if (audio.readyState >= HTMLMediaElement.HAVE_METADATA) startPlayback();
@@ -661,9 +678,9 @@ function App() {
         setListeningResumeRequired(false);
         setAudioError("");
       })
-      .catch(() => {
+      .catch((error: unknown) => {
         listeningPlayed.current = false;
-        setAudioError("영어 듣기를 재생할 수 없습니다. 브라우저의 소리 권한을 확인해 주세요.");
+        setAudioError(formatAudioError("영어 듣기 계속하기", error, audio.error));
       });
   };
 

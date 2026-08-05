@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { formatAudioError } from "./audio-errors";
 import { bellEvents } from "./schedule";
 
 interface AudioPreviewOptions {
@@ -64,10 +65,15 @@ export function useAudioPreviews({
     audio.volume = bellVolume;
     bellAudio.current = audio;
     setPreviewing(true);
-    audio.play().catch(() => {
+    audio.onerror = () => {
       bellAudio.current = undefined;
       setPreviewing(false);
-      onError("소리 확인을 재생할 수 없습니다.");
+      onError(formatAudioError("타종 소리 확인", undefined, audio.error));
+    };
+    audio.play().catch((error: unknown) => {
+      bellAudio.current = undefined;
+      setPreviewing(false);
+      onError(formatAudioError("타종 소리 확인", error, audio.error));
     });
     audio.onended = () => {
       bellAudio.current = undefined;
@@ -90,12 +96,19 @@ export function useAudioPreviews({
     listeningAudio.current = audio;
     listeningUrl.current = url;
     setListeningPreviewing(true);
-    audio.play().catch(() => {
+    audio.onerror = () => {
       URL.revokeObjectURL(url);
       listeningAudio.current = undefined;
       listeningUrl.current = undefined;
       setListeningPreviewing(false);
-      onError("영어 듣기 파일을 재생할 수 없습니다.");
+      onError(formatAudioError("영어 듣기 소리 확인", undefined, audio.error));
+    };
+    audio.play().catch((error: unknown) => {
+      URL.revokeObjectURL(url);
+      listeningAudio.current = undefined;
+      listeningUrl.current = undefined;
+      setListeningPreviewing(false);
+      onError(formatAudioError("영어 듣기 소리 확인", error, audio.error));
     });
     audio.onended = () => {
       URL.revokeObjectURL(url);
