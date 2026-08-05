@@ -25,6 +25,7 @@ import {
   type SubjectId,
 } from "./schedule";
 import { clearEnglishFile, loadEnglishFile, saveEnglishFile } from "./storage";
+import { formatAudioError } from "./audio-errors";
 
 function App() {
   const savedSettings = readJson<
@@ -229,7 +230,7 @@ function App() {
           URL.revokeObjectURL(prefetchedUrl);
           currentBellObjectUrl.current = undefined;
         }
-        setAudioError(`${bell.label} 음원을 불러오지 못했습니다.`);
+        setAudioError(formatAudioError(bell.label, undefined, audio.error));
       };
       audio.onended = () => {
         if (currentBellObjectUrl.current === prefetchedUrl && prefetchedUrl) {
@@ -241,7 +242,9 @@ function App() {
       audio.load();
       setCurrentBell(bell);
       setAudioError("");
-      audio.play().catch(() => setAudioError("브라우저에서 소리 재생을 차단했습니다."));
+      audio.play().catch((error: unknown) =>
+        setAudioError(formatAudioError(bell.label, error, audio.error)),
+      );
     },
     [getBellFile, volume],
   );
@@ -253,6 +256,10 @@ function App() {
     const audio = new Audio(url);
     audio.volume = listeningVolume;
     listeningAudio.current = audio;
+    audio.onerror = () => {
+      listeningPlayed.current = false;
+      setAudioError(formatAudioError("영어 듣기", undefined, audio.error));
+    };
     const startPlayback = () => {
       if (Number.isFinite(audio.duration) && offsetSeconds >= audio.duration) {
         URL.revokeObjectURL(url);
@@ -265,9 +272,10 @@ function App() {
       audio
         .play()
         .then(() => setListeningResumeRequired(false))
-        .catch(() => {
+        .catch((error: unknown) => {
           listeningPlayed.current = false;
           if (offsetSeconds > 0) setListeningResumeRequired(true);
+          setAudioError(formatAudioError("영어 듣기", error, audio.error));
         });
     };
     if (audio.readyState >= HTMLMediaElement.HAVE_METADATA) startPlayback();
@@ -670,9 +678,9 @@ function App() {
         setListeningResumeRequired(false);
         setAudioError("");
       })
-      .catch(() => {
+      .catch((error: unknown) => {
         listeningPlayed.current = false;
-        setAudioError("영어 듣기를 재생할 수 없습니다. 브라우저의 소리 권한을 확인해 주세요.");
+        setAudioError(formatAudioError("영어 듣기 계속하기", error, audio.error));
       });
   };
 
