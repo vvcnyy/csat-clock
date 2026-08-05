@@ -143,6 +143,14 @@ function App() {
     prefetchedBells.current.clear();
   }, []);
 
+  const getBellFile = useCallback(
+    (bell: BellEvent) =>
+      session?.mode === "subject" && bell.shortFile
+        ? bell.shortFile
+        : bell.file,
+    [session?.mode],
+  );
+
   useEffect(() => {
     if (!session) {
       clearBellPrefetch();
@@ -176,7 +184,7 @@ function App() {
       }
 
       pendingBellFetches.current.add(bell.id);
-      const url = `/sound/${encodeURIComponent(bell.file)}`;
+      const url = `/sound/${encodeURIComponent(getBellFile(bell))}`;
       void fetch(url)
         .then((response) => {
           if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -193,6 +201,7 @@ function App() {
     }
   }, [
     clearBellPrefetch,
+    getBellFile,
     session,
     subjectEvents,
     virtualSeconds,
@@ -202,7 +211,7 @@ function App() {
     (bell: BellEvent) => {
       const prefetchedUrl = prefetchedBells.current.get(bell.id);
       const url =
-        prefetchedUrl ?? `/sound/${encodeURIComponent(bell.file)}`;
+        prefetchedUrl ?? `/sound/${encodeURIComponent(getBellFile(bell))}`;
       prefetchedBells.current.delete(bell.id);
       const audio = bellAudio.current ?? new Audio();
       bellAudio.current = audio;
@@ -234,7 +243,7 @@ function App() {
       setAudioError("");
       audio.play().catch(() => setAudioError("브라우저에서 소리 재생을 차단했습니다."));
     },
-    [volume],
+    [getBellFile, volume],
   );
 
   const playListening = useCallback(async (offsetSeconds = 0) => {
