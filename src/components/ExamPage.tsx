@@ -100,6 +100,7 @@ export function ExamPage({
   const examEndSeconds = activeSubject ? toSeconds(activeSubject.end) : null;
   const secondsUntilEnd = examEndSeconds == null ? null : examEndSeconds - virtualSeconds;
   const endMarkerMinute =
+    examInProgress &&
     examEndSeconds != null &&
     secondsUntilEnd != null &&
     secondsUntilEnd > 0 &&
