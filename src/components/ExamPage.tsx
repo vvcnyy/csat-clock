@@ -143,29 +143,26 @@ export function ExamPage({
       ) : (
         <>
           <header className="exam-heading">
-            <p>{activeSubject?.period ?? "수능 시간표"}</p>
             <h1>{activeSubject?.name ?? "시험 외 시간"}</h1>
+            <div className="bell-status" aria-live="polite">
+              <span
+                className={`status-layer bell-label ${currentBell ? "visible" : ""}`}
+                aria-hidden={!currentBell}
+              >
+                {displayedBellLabel}
+              </span>
+              <span
+                className={`status-layer exam-time ${
+                  !currentBell && examInProgress ? "visible" : ""
+                }`}
+                aria-hidden={Boolean(currentBell) || !examInProgress}
+              >
+                {displayedExamTime}
+              </span>
+            </div>
           </header>
           <AnalogClock seconds={virtualSeconds} />
-          <div
-            className="bell-status"
-            aria-live="polite"
-          >
-            <span
-              className={`status-layer bell-label ${currentBell ? "visible" : ""}`}
-              aria-hidden={!currentBell}
-            >
-              {displayedBellLabel}
-            </span>
-            <span
-              className={`status-layer exam-time ${
-                !currentBell && examInProgress ? "visible" : ""
-              }`}
-              aria-hidden={Boolean(currentBell) || !examInProgress}
-            >
-              {displayedExamTime}
-            </span>
-          </div>
+          <p className="exam-period">{activeSubject?.period ?? "수능 시간표"}</p>
         </>
       )}
 
