@@ -10,7 +10,7 @@ import {
 import { useEffect, useState } from "react";
 import AnalogClock from "../AnalogClock";
 import type { ListeningTiming, Session } from "../exam-types";
-import type { BellEvent } from "../schedule";
+import { toSeconds, type BellEvent } from "../schedule";
 import type { WakeLockStatus } from "../useWakeLock";
 import {
   AlertDialog,
@@ -97,6 +97,15 @@ export function ExamPage({
       ? `${activeSubject.start.slice(0, 5)} ~ ${activeSubject.end.slice(0, 5)}`
       : "",
   );
+  const examEndSeconds = activeSubject ? toSeconds(activeSubject.end) : null;
+  const secondsUntilEnd = examEndSeconds == null ? null : examEndSeconds - virtualSeconds;
+  const endMarkerMinute =
+    examEndSeconds != null &&
+    secondsUntilEnd != null &&
+    secondsUntilEnd > 0 &&
+    secondsUntilEnd <= 30 * 60
+      ? Math.floor(examEndSeconds / 60) % 60
+      : null;
 
   useEffect(() => {
     if (currentBell) {
@@ -161,7 +170,7 @@ export function ExamPage({
               </span>
             </div>
           </header>
-          <AnalogClock seconds={virtualSeconds} />
+          <AnalogClock seconds={virtualSeconds} endMarkerMinute={endMarkerMinute} />
           <p className="exam-period">{activeSubject?.period ?? "수능 시간표"}</p>
         </>
       )}

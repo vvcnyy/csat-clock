@@ -1,18 +1,24 @@
 interface AnalogClockProps {
   seconds: number;
+  endMarkerMinute?: number | null;
 }
 
-export default function AnalogClock({ seconds }: AnalogClockProps) {
+export default function AnalogClock({ seconds, endMarkerMinute }: AnalogClockProps) {
   const wholeSeconds = Math.floor(seconds);
   const second = wholeSeconds % 60;
   const minute = (wholeSeconds / 60) % 60;
   const hour = (wholeSeconds / 3600) % 12;
 
   return (
-    <div className="clock" aria-label="아날로그 시계">
+    <div
+      className="clock"
+      aria-label={`아날로그 시계${endMarkerMinute != null ? `, ${endMarkerMinute}분 위치에 종료령 표시` : ""}`}
+    >
       {Array.from({ length: 60 }, (_, index) => (
         <span
-          className={index % 5 === 0 ? "tick tick-major" : "tick"}
+          className={`tick${index % 5 === 0 ? " tick-major" : ""}${
+            endMarkerMinute === index ? " tick-end" : ""
+          }`}
           key={index}
           style={{ transform: `rotate(${index * 6}deg)` }}
         />

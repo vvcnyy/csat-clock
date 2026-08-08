@@ -600,6 +600,15 @@ button { cursor: pointer; }
   transform-origin: 50% 1175%;
   background: #d4d4d8;
 }
+.tick.tick-end {
+  top: 2%;
+  left: calc(50% - 3px);
+  width: 6px;
+  height: 5.5%;
+  transform-origin: 50% 872.727%;
+  background: #ef4444;
+  box-shadow: 0 0 8px rgb(239 68 68 / 80%);
+}
 .clock-number {
   position: absolute;
   color: #e4e4e7;
