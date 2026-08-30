@@ -25,7 +25,9 @@ export function initializeGoogleAnalytics() {
   if (document.querySelector("script[data-google-analytics]")) return;
 
   window.dataLayer = window.dataLayer ?? [];
-  window.gtag = (...args) => window.dataLayer.push(args);
+  window.gtag = function gtag() {
+    window.dataLayer.push(arguments);
+  } as Gtag;
 
   const script = document.createElement("script");
   script.async = true;
@@ -35,6 +37,7 @@ export function initializeGoogleAnalytics() {
 
   window.gtag("js", new Date());
   window.gtag("config", measurementId, {
+    send_page_view: true,
     page_title: document.title,
     page_location: window.location.href,
   });
