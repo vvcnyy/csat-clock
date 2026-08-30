@@ -329,7 +329,7 @@ function ExamCompletedDialog({
         <AlertDialogHeader>
           <AlertDialogTitle>시험이 종료되었습니다</AlertDialogTitle>
           <AlertDialogDescription>
-            {subjectName} 시험이 모두 끝났습니다.
+            {subjectName} 시험이 모두 끝났습니다. 5분 후 시작 화면으로 자동 이동합니다.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>

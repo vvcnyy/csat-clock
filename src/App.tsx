@@ -89,6 +89,8 @@ function App() {
   const restoredOnLoad = useRef(Boolean(readJson<Session>(SESSION_KEY)));
   const listeningResumeChecked = useRef(false);
   const controlsTimer = useRef<number | undefined>(undefined);
+  const activeSessionStartedAt = useRef(session?.startedAt);
+  activeSessionStartedAt.current = session?.startedAt;
   const {
     listeningPreviewing,
     previewing,
@@ -318,11 +320,13 @@ function App() {
     };
 
     const timers: number[] = [];
+    const scheduledSessionStartedAt = session.startedAt;
     for (const bell of candidates) {
       if (playedEvents.current.has(bell.id)) continue;
       const delay = delayUntil(getBellSeconds(bell));
       if (delay <= 0) continue;
       timers.push(window.setTimeout(() => {
+        if (activeSessionStartedAt.current !== scheduledSessionStartedAt) return;
         if (playedEvents.current.has(bell.id)) return;
         playedEvents.current.add(bell.id);
         playBell(bell);
@@ -337,7 +341,10 @@ function App() {
       );
       const delay = delayUntil(listeningAt);
       if (delay > 0) {
-        timers.push(window.setTimeout(() => void playListening(), delay));
+        timers.push(window.setTimeout(() => {
+          if (activeSessionStartedAt.current !== scheduledSessionStartedAt) return;
+          void playListening();
+        }, delay));
       } else if (
         session.mode === "subject" &&
         session.startAtMainBell &&
@@ -435,17 +442,6 @@ function App() {
   ]);
 
   useEffect(() => {
-    if (!session || session.mode === "sync" || session.pausedAt || countdown > 0) return;
-    if (
-      virtualSeconds >=
-      examEndSeconds + EXAM_COMPLETION_DELAY_SECONDS
-    ) {
-      setExamCompleted(true);
-      setControlsVisible(true);
-    }
-  }, [countdown, examEndSeconds, session, virtualSeconds]);
-
-  useEffect(() => {
     if (!session) return;
     const handleVisibility = () => {
       if (
@@ -537,6 +533,7 @@ function App() {
     setCurrentBell(null);
     setExamCompleted(false);
     setAudioError("");
+    activeSessionStartedAt.current = startedAt;
     setSession({
       mode,
       subjectId: mode === "subject" ? subjectId : undefined,
@@ -627,7 +624,8 @@ function App() {
     );
   };
 
-  const exitExam = () => {
+  const exitExam = useCallback(() => {
+    activeSessionStartedAt.current = undefined;
     stopBellPreview();
     stopListeningPreview();
     clearBellPrefetch();
@@ -647,7 +645,35 @@ function App() {
     restoredOnLoad.current = false;
     listeningResumeChecked.current = false;
     document.exitFullscreen?.().catch(() => undefined);
-  };
+  }, [clearBellPrefetch, stopBellPreview, stopListeningPreview]);
+
+  useEffect(() => {
+    if (
+      !session ||
+      session.mode === "sync" ||
+      session.pausedAt ||
+      countdown > 0 ||
+      virtualSeconds < examEndSeconds
+    ) {
+      return;
+    }
+
+    setExamCompleted(true);
+    setControlsVisible(true);
+
+    const secondsUntilHome =
+      examEndSeconds + EXAM_COMPLETION_DELAY_SECONDS - virtualSeconds;
+    if (secondsUntilHome <= 0) {
+      exitExam();
+      return;
+    }
+
+    const timer = window.setTimeout(
+      exitExam,
+      Math.ceil(secondsUntilHome * 1000),
+    );
+    return () => window.clearTimeout(timer);
+  }, [countdown, examEndSeconds, exitExam, session, virtualSeconds]);
 
   const revealControls = () => {
     setControlsVisible(true);
