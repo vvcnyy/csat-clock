@@ -25,7 +25,11 @@ import {
   type SubjectId,
 } from "./schedule";
 import { clearEnglishFile, loadEnglishFile, saveEnglishFile } from "./storage";
-import { formatAudioError, getAudioErrorCode } from "./audio-errors";
+import {
+  formatAudioError,
+  getAudioErrorCode,
+  getAudioErrorDetails,
+} from "./audio-errors";
 import { trackGoogleAnalyticsEvent } from "./google-analytics";
 
 const analyticsExamDetails = (session: Session) => ({
@@ -37,6 +41,19 @@ const analyticsExamDetails = (session: Session) => ({
         ? "custom"
         : "all",
 });
+
+const durationBucket = (minutes: number) =>
+  minutes <= 30 ? "1-30" : minutes <= 60 ? "31-60" : minutes <= 90 ? "61-90" : "91+";
+
+const progressDetails = (current: number, start: number, end: number) => {
+  const total = Math.max(1, end - start);
+  const elapsed = Math.max(0, Math.min(total, current - start));
+  return {
+    progress_percent: Math.round((elapsed / total) * 1000) / 10,
+    progress_elapsed_seconds: Math.round(elapsed),
+    progress_remaining_seconds: Math.round(Math.max(0, end - current)),
+  };
+};
 
 function App() {
   const savedSettings = readJson<
@@ -75,6 +92,7 @@ function App() {
   const {
     activeSubject,
     countdown,
+    examStartSeconds,
     examEndSeconds,
     examInProgress,
     selectedSubject,
@@ -101,6 +119,11 @@ function App() {
   const listeningResumeChecked = useRef(false);
   const controlsTimer = useRef<number | undefined>(undefined);
   const completedTrackedSession = useRef<number | undefined>(undefined);
+  const beganTrackedSession = useRef<number | undefined>(undefined);
+  const restoreTrackedSession = useRef<number | undefined>(undefined);
+  const backgroundStartedAt = useRef<number | undefined>(undefined);
+  const backgroundAudioWasPlaying = useRef(false);
+  const listeningSource = useRef<"local" | "ebsi" | "restored" | "none">("none");
   const activeSessionStartedAt = useRef(session?.startedAt);
   activeSessionStartedAt.current = session?.startedAt;
   const {
@@ -118,13 +141,76 @@ function App() {
   });
 
   useEffect(() => {
-    loadEnglishFile().then(setEnglishFile).catch(() => undefined);
+    loadEnglishFile().then((file) => {
+      setEnglishFile(file);
+      if (file) listeningSource.current = "restored";
+    }).catch(() => undefined);
   }, []);
 
   useEffect(() => {
     if (session) localStorage.setItem(SESSION_KEY, JSON.stringify(session));
     else localStorage.removeItem(SESSION_KEY);
   }, [session]);
+
+  useEffect(() => {
+    if (!session || restoreTrackedSession.current === session.startedAt) return;
+    if (restoredOnLoad.current) {
+      restoreTrackedSession.current = session.startedAt;
+      beganTrackedSession.current = session.startedAt;
+      trackGoogleAnalyticsEvent("exam_restore", {
+        ...analyticsExamDetails(session),
+        restore_position:
+          countdown > 0
+            ? "countdown"
+            : virtualSeconds >= examEndSeconds
+              ? "completed_or_expired"
+              : "in_progress",
+        ...progressDetails(virtualSeconds, examStartSeconds, examEndSeconds),
+      });
+    }
+  }, [countdown, examEndSeconds, examStartSeconds, session, virtualSeconds]);
+
+  useEffect(() => {
+    if (!session || countdown > 0 || beganTrackedSession.current === session.startedAt) return;
+    beganTrackedSession.current = session.startedAt;
+    trackGoogleAnalyticsEvent("exam_begin", {
+      ...analyticsExamDetails(session),
+      custom_duration_minutes: session.customDurationMinutes,
+      custom_duration_bucket: session.customDurationMinutes
+        ? durationBucket(session.customDurationMinutes)
+        : undefined,
+    });
+  }, [countdown, session]);
+
+  useEffect(() => {
+    if (!session) return;
+    const handleVisibility = () => {
+      const details = {
+        ...analyticsExamDetails(session),
+        ...progressDetails(virtualSeconds, examStartSeconds, examEndSeconds),
+      };
+      if (document.visibilityState === "hidden") {
+        backgroundStartedAt.current = Date.now();
+        backgroundAudioWasPlaying.current = Boolean(
+          (bellAudio.current && !bellAudio.current.paused) ||
+          (listeningAudio.current && !listeningAudio.current.paused),
+        );
+        trackGoogleAnalyticsEvent("exam_background", {
+          ...details,
+          was_audio_playing: backgroundAudioWasPlaying.current,
+        });
+      } else if (backgroundStartedAt.current) {
+        trackGoogleAnalyticsEvent("exam_foreground", {
+          ...details,
+          background_seconds: Math.round((Date.now() - backgroundStartedAt.current) / 1000),
+          was_audio_playing: backgroundAudioWasPlaying.current,
+        });
+        backgroundStartedAt.current = undefined;
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => document.removeEventListener("visibilitychange", handleVisibility);
+  }, [examEndSeconds, examStartSeconds, session, virtualSeconds]);
 
   useEffect(() => {
     localStorage.setItem(
@@ -200,18 +286,38 @@ function App() {
 
       pendingBellFetches.current.add(bell.id);
       const url = `/sound/${encodeURIComponent(getBellFile(bell))}`;
+      const prefetchStartedAt = performance.now();
+      let httpStatus: number | undefined;
       void fetch(url)
         .then((response) => {
+          httpStatus = response.status;
           if (!response.ok) throw new Error(`HTTP ${response.status}`);
           return response.blob();
         })
         .then((blob) => {
           if (!desiredPrefetchIds.current.has(bell.id)) return;
           prefetchedBells.current.set(bell.id, URL.createObjectURL(blob));
+          trackGoogleAnalyticsEvent("audio_prefetch_success", {
+            ...analyticsExamDetails(session),
+            bell_kind: bell.kind,
+            source_type: "network_blob",
+            http_status: httpStatus,
+            fetch_duration_ms: Math.round(performance.now() - prefetchStartedAt),
+          });
         })
         .then(
           () => pendingBellFetches.current.delete(bell.id),
-          () => pendingBellFetches.current.delete(bell.id),
+          (error: unknown) => {
+            pendingBellFetches.current.delete(bell.id);
+            trackGoogleAnalyticsEvent("audio_prefetch_error", {
+              ...analyticsExamDetails(session),
+              bell_kind: bell.kind,
+              source_type: "network_blob",
+              http_status: httpStatus,
+              fetch_duration_ms: Math.round(performance.now() - prefetchStartedAt),
+              error_name: error instanceof Error ? error.name : "unknown",
+            });
+          },
         );
     }
   }, [
@@ -223,7 +329,7 @@ function App() {
   ]);
 
   const playBell = useCallback(
-    (bell: BellEvent) => {
+    (bell: BellEvent, expectedAtMs = Date.now()) => {
       const prefetchedUrl = prefetchedBells.current.get(bell.id);
       const url =
         prefetchedUrl ?? `/sound/${encodeURIComponent(getBellFile(bell))}`;
@@ -237,6 +343,7 @@ function App() {
       }
       currentBellObjectUrl.current = prefetchedUrl;
       let errorReported = false;
+      let successReported = false;
       const reportError = (error?: unknown) => {
         if (errorReported) return;
         errorReported = true;
@@ -247,9 +354,7 @@ function App() {
           error_context: "playback",
           bell_kind: bell.kind,
           source_type: prefetchedUrl ? "prefetched_blob" : "direct_url",
-          media_error_code: audio.error?.code
-            ? String(audio.error.code)
-            : undefined,
+          ...getAudioErrorDetails(error, audio),
         });
         setAudioError(formatAudioError(bell.label, error, audio.error));
       };
@@ -263,6 +368,18 @@ function App() {
         }
         reportError();
       };
+      audio.onplaying = () => {
+        if (successReported) return;
+        successReported = true;
+        trackGoogleAnalyticsEvent("audio_play_success", {
+          ...(session ? analyticsExamDetails(session) : {}),
+          audio_type: "bell",
+          error_context: "playback",
+          bell_kind: bell.kind,
+          source_type: prefetchedUrl ? "prefetched_blob" : "direct_url",
+          bell_delay_ms: Math.max(0, Math.round(Date.now() - expectedAtMs)),
+        });
+      };
       audio.onended = () => {
         if (currentBellObjectUrl.current === prefetchedUrl && prefetchedUrl) {
           URL.revokeObjectURL(prefetchedUrl);
@@ -273,6 +390,13 @@ function App() {
       audio.load();
       setCurrentBell(bell);
       setAudioError("");
+      trackGoogleAnalyticsEvent("audio_play_attempt", {
+        ...(session ? analyticsExamDetails(session) : {}),
+        audio_type: "bell",
+        error_context: "playback",
+        bell_kind: bell.kind,
+        source_type: prefetchedUrl ? "prefetched_blob" : "direct_url",
+      });
       audio.play().catch((error: unknown) => reportError(error));
     },
     [getBellFile, session, volume],
@@ -285,6 +409,12 @@ function App() {
     const audio = new Audio(url);
     audio.volume = listeningVolume;
     listeningAudio.current = audio;
+    trackGoogleAnalyticsEvent("audio_play_attempt", {
+      ...(session ? analyticsExamDetails(session) : {}),
+      audio_type: "listening",
+      error_context: offsetSeconds > 0 ? "resume" : "playback",
+      source_type: listeningSource.current,
+    });
     let errorReported = false;
     const reportError = (error?: unknown) => {
       if (errorReported) return;
@@ -294,10 +424,8 @@ function App() {
         error_code: getAudioErrorCode(error, audio.error),
         audio_type: "listening",
         error_context: offsetSeconds > 0 ? "resume" : "playback",
-        source_type: "user_file",
-        media_error_code: audio.error?.code
-          ? String(audio.error.code)
-          : undefined,
+        source_type: listeningSource.current,
+        ...getAudioErrorDetails(error, audio),
       });
       setAudioError(formatAudioError("영어 듣기", error, audio.error));
     };
@@ -317,6 +445,12 @@ function App() {
       audio
         .play()
         .then(() => {
+          trackGoogleAnalyticsEvent("audio_play_success", {
+            ...(session ? analyticsExamDetails(session) : {}),
+            audio_type: "listening",
+            error_context: offsetSeconds > 0 ? "resume" : "playback",
+            source_type: listeningSource.current,
+          });
           setListeningResumeRequired(false);
           trackGoogleAnalyticsEvent("listening_start", {
             ...(session ? analyticsExamDetails(session) : {}),
@@ -375,11 +509,12 @@ function App() {
       if (playedEvents.current.has(bell.id)) continue;
       const delay = delayUntil(getBellSeconds(bell));
       if (delay <= 0) continue;
+      const expectedAtMs = Date.now() + delay;
       timers.push(window.setTimeout(() => {
         if (activeSessionStartedAt.current !== scheduledSessionStartedAt) return;
         if (playedEvents.current.has(bell.id)) return;
         playedEvents.current.add(bell.id);
-        playBell(bell);
+        playBell(bell, expectedAtMs);
       }, delay));
     }
 
@@ -469,7 +604,9 @@ function App() {
       const at = getBellSeconds(bell);
       if (previous < at && virtualSeconds >= at && !playedEvents.current.has(bell.id)) {
         playedEvents.current.add(bell.id);
-        if (virtualSeconds - at <= 5) playBell(bell);
+        if (virtualSeconds - at <= 5) {
+          playBell(bell, Date.now() - Math.max(0, virtualSeconds - at) * 1000);
+        }
       }
     }
 
@@ -519,12 +656,26 @@ function App() {
     return () => document.removeEventListener("visibilitychange", handleVisibility);
   }, [listeningTiming, session, virtualSeconds]);
 
-  const chooseEnglishFile = async (file?: File) => {
+  const chooseEnglishFile = async (
+    file?: File,
+    source: "local" | "ebsi" = "local",
+  ) => {
     if (!file) return;
     setEnglishFile(file);
+    listeningSource.current = source;
+    const extension = file.name.split(".").pop()?.toLowerCase();
+    trackGoogleAnalyticsEvent("listening_file_select", {
+      listening_source: source,
+      file_type: file.type || extension || "unknown",
+    });
     try {
       await saveEnglishFile(file);
-    } catch {
+    } catch (error) {
+      trackGoogleAnalyticsEvent("listening_storage_error", {
+        listening_source: source,
+        storage_action: "save",
+        error_name: error instanceof Error ? error.name : "unknown",
+      });
       setAudioError("듣기 파일은 선택됐지만 새로고침 복원용 저장에 실패했습니다.");
     }
   };
@@ -532,9 +683,17 @@ function App() {
   const removeEnglishFile = async () => {
     stopListeningPreview();
     setEnglishFile(undefined);
+    trackGoogleAnalyticsEvent("listening_file_remove", {
+      listening_source: listeningSource.current,
+    });
+    listeningSource.current = "none";
     try {
       await clearEnglishFile();
-    } catch {
+    } catch (error) {
+      trackGoogleAnalyticsEvent("listening_storage_error", {
+        storage_action: "remove",
+        error_name: error instanceof Error ? error.name : "unknown",
+      });
       setAudioError("저장된 듣기 파일을 삭제하지 못했습니다.");
     }
   };
@@ -584,7 +743,8 @@ function App() {
     setExamCompleted(false);
     setAudioError("");
     completedTrackedSession.current = undefined;
-    trackGoogleAnalyticsEvent("exam_start", {
+    beganTrackedSession.current = undefined;
+    const startParameters = {
       exam_mode: mode,
       subject:
         mode === "subject" ? subjectId : mode === "custom" ? "custom" : "all",
@@ -596,8 +756,12 @@ function App() {
       has_listening_audio: Boolean(englishFile),
       custom_duration_minutes:
         mode === "custom" ? safeCustomDuration : undefined,
+      custom_duration_bucket:
+        mode === "custom" ? durationBucket(safeCustomDuration) : undefined,
       custom_start_mode: mode === "custom" ? customStartMode : undefined,
-    });
+    };
+    trackGoogleAnalyticsEvent("exam_start_click", startParameters);
+    trackGoogleAnalyticsEvent("exam_start", startParameters);
     activeSessionStartedAt.current = startedAt;
     setSession({
       mode,
@@ -615,7 +779,12 @@ function App() {
       customStartSeconds:
         mode === "custom" ? customStartSeconds : undefined,
     });
-    document.documentElement.requestFullscreen?.().catch(() => undefined);
+    document.documentElement.requestFullscreen?.().catch((error) =>
+      trackGoogleAnalyticsEvent("fullscreen_failed", {
+        fullscreen_action: "automatic_enter",
+        error_name: error instanceof Error ? error.name : "unknown",
+      }),
+    );
   };
 
   const togglePause = () => {
@@ -712,6 +881,7 @@ function App() {
         ...analyticsExamDetails(session),
         exit_reason: reason,
         completed: examCompleted || reason !== "user",
+        ...progressDetails(virtualSeconds, examStartSeconds, examEndSeconds),
       });
     }
     activeSessionStartedAt.current = undefined;
@@ -734,7 +904,7 @@ function App() {
     restoredOnLoad.current = false;
     listeningResumeChecked.current = false;
     document.exitFullscreen?.().catch(() => undefined);
-  }, [clearBellPrefetch, examCompleted, session, stopBellPreview, stopListeningPreview]);
+  }, [clearBellPrefetch, examCompleted, examEndSeconds, examStartSeconds, session, stopBellPreview, stopListeningPreview, virtualSeconds]);
 
   useEffect(() => {
     if (
@@ -763,12 +933,16 @@ function App() {
     const secondsUntilHome =
       examEndSeconds + EXAM_COMPLETION_DELAY_SECONDS - virtualSeconds;
     if (secondsUntilHome <= 0) {
+      trackGoogleAnalyticsEvent("completion_auto_return", analyticsExamDetails(session));
       exitExam("auto_after_complete");
       return;
     }
 
     const timer = window.setTimeout(
-      () => exitExam("auto_after_complete"),
+      () => {
+        trackGoogleAnalyticsEvent("completion_auto_return", analyticsExamDetails(session));
+        exitExam("auto_after_complete");
+      },
       Math.ceil(secondsUntilHome * 1000),
     );
     return () => window.clearTimeout(timer);
@@ -797,9 +971,21 @@ function App() {
       audio.currentTime = Math.min(offset, Math.max(0, audio.duration - 0.1));
     }
     listeningPlayed.current = true;
+    trackGoogleAnalyticsEvent("audio_play_attempt", {
+      ...(session ? analyticsExamDetails(session) : {}),
+      audio_type: "listening",
+      error_context: "manual_resume",
+      source_type: listeningSource.current,
+    });
     audio
       .play()
       .then(() => {
+        trackGoogleAnalyticsEvent("audio_play_success", {
+          ...(session ? analyticsExamDetails(session) : {}),
+          audio_type: "listening",
+          error_context: "manual_resume",
+          source_type: listeningSource.current,
+        });
         setListeningResumeRequired(false);
         setAudioError("");
         trackGoogleAnalyticsEvent("listening_resume", {
@@ -814,10 +1000,8 @@ function App() {
           error_code: getAudioErrorCode(error, audio.error),
           audio_type: "listening",
           error_context: "manual_resume",
-          source_type: "user_file",
-          media_error_code: audio.error?.code
-            ? String(audio.error.code)
-            : undefined,
+          source_type: listeningSource.current,
+          ...getAudioErrorDetails(error, audio),
         });
         setAudioError(formatAudioError("영어 듣기 계속하기", error, audio.error));
       });
@@ -839,16 +1023,31 @@ function App() {
         previewing={previewing}
         listeningPreviewing={listeningPreviewing}
         audioError={audioError}
-        onModeChange={setMode}
-        onSubjectChange={setSubjectId}
+        onModeChange={(next) => {
+          trackGoogleAnalyticsEvent("exam_setup_change", { setting_name: "exam_mode", setting_value: next });
+          setMode(next);
+        }}
+        onSubjectChange={(next) => {
+          trackGoogleAnalyticsEvent("exam_setup_change", { setting_name: "subject", setting_value: next });
+          setSubjectId(next);
+        }}
         onVolumeChange={setVolume}
         onListeningVolumeChange={setListeningVolume}
-        onListeningTimingChange={setListeningTiming}
-        onStartAtMainBellChange={setStartAtMainBell}
+        onListeningTimingChange={(next) => {
+          trackGoogleAnalyticsEvent("exam_setup_change", { setting_name: "listening_timing", setting_value: next });
+          setListeningTiming(next);
+        }}
+        onStartAtMainBellChange={(next) => {
+          trackGoogleAnalyticsEvent("exam_setup_change", { setting_name: "start_at_main_bell", setting_value: String(next) });
+          setStartAtMainBell(next);
+        }}
         onCustomDurationChange={setCustomDurationMinutes}
-        onCustomStartModeChange={setCustomStartMode}
+        onCustomStartModeChange={(next) => {
+          trackGoogleAnalyticsEvent("exam_setup_change", { setting_name: "custom_start_mode", setting_value: next });
+          setCustomStartMode(next);
+        }}
         onCustomStartTimeChange={setCustomStartTime}
-        onChooseEnglishFile={(file) => void chooseEnglishFile(file)}
+        onChooseEnglishFile={(file, source) => void chooseEnglishFile(file, source)}
         onRemoveEnglishFile={() => void removeEnglishFile()}
         onTestBell={testBell}
         onTestListening={testListening}
@@ -887,7 +1086,10 @@ function App() {
         if (listeningAudio.current) listeningAudio.current.volume = next;
       }}
       onExit={() => exitExam("user")}
-      onCompleteReturn={() => exitExam("completed_confirm")}
+      onCompleteReturn={() => {
+        trackGoogleAnalyticsEvent("completion_confirm", analyticsExamDetails(session));
+        exitExam("completed_confirm");
+      }}
       onResumeListening={resumeListeningFromCurrentTime}
     />
   );

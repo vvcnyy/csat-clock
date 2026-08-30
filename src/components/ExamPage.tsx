@@ -12,6 +12,7 @@ import AnalogClock from "../AnalogClock";
 import type { ListeningTiming, Session } from "../exam-types";
 import { toSeconds, type BellEvent } from "../schedule";
 import type { WakeLockStatus } from "../useWakeLock";
+import { trackGoogleAnalyticsEvent } from "../google-analytics";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -128,8 +129,18 @@ export function ExamPage({
   }, [activeSubject]);
 
   useEffect(() => {
+    if (document.fullscreenElement) {
+      trackGoogleAnalyticsEvent("fullscreen_enter", {
+        exam_mode: session.mode,
+        fullscreen_action: "initial",
+      });
+    }
     const handleFullscreenChange = () => {
-      setIsFullscreen(Boolean(document.fullscreenElement));
+      const next = Boolean(document.fullscreenElement);
+      setIsFullscreen(next);
+      trackGoogleAnalyticsEvent(next ? "fullscreen_enter" : "fullscreen_exit", {
+        exam_mode: session.mode,
+      });
     };
     document.addEventListener("fullscreenchange", handleFullscreenChange);
     return () => document.removeEventListener("fullscreenchange", handleFullscreenChange);
@@ -137,9 +148,19 @@ export function ExamPage({
 
   const toggleFullscreen = () => {
     if (document.fullscreenElement) {
-      void document.exitFullscreen?.();
+      void document.exitFullscreen?.().catch((error) =>
+        trackGoogleAnalyticsEvent("fullscreen_failed", {
+          fullscreen_action: "exit",
+          error_name: error instanceof Error ? error.name : "unknown",
+        }),
+      );
     } else {
-      void document.documentElement.requestFullscreen?.();
+      void document.documentElement.requestFullscreen?.().catch((error) =>
+        trackGoogleAnalyticsEvent("fullscreen_failed", {
+          fullscreen_action: "enter",
+          error_name: error instanceof Error ? error.name : "unknown",
+        }),
+      );
     }
   };
 

@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { formatAudioError, getAudioErrorCode } from "./audio-errors";
+import {
+  formatAudioError,
+  getAudioErrorCode,
+  getAudioErrorDetails,
+} from "./audio-errors";
 import { trackGoogleAnalyticsEvent } from "./google-analytics";
 import { bellEvents } from "./schedule";
 
@@ -66,6 +70,12 @@ export function useAudioPreviews({
     audio.volume = bellVolume;
     bellAudio.current = audio;
     setPreviewing(true);
+    trackGoogleAnalyticsEvent("audio_play_attempt", {
+      audio_type: "bell",
+      error_context: "preview",
+      bell_kind: sample.kind,
+      source_type: "direct_url",
+    });
     let errorReported = false;
     const reportError = (error?: unknown) => {
       if (errorReported) return;
@@ -74,9 +84,7 @@ export function useAudioPreviews({
         error_code: getAudioErrorCode(error, audio.error),
         audio_type: "bell",
         error_context: "preview",
-        media_error_code: audio.error?.code
-          ? String(audio.error.code)
-          : undefined,
+        ...getAudioErrorDetails(error, audio),
       });
       onError(formatAudioError("타종 소리 확인", error, audio.error));
     };
@@ -85,11 +93,18 @@ export function useAudioPreviews({
       setPreviewing(false);
       reportError();
     };
-    audio.play().catch((error: unknown) => {
-      bellAudio.current = undefined;
-      setPreviewing(false);
-      reportError(error);
-    });
+    audio.play().then(() => {
+      trackGoogleAnalyticsEvent("audio_play_success", {
+        audio_type: "bell",
+        error_context: "preview",
+        bell_kind: sample.kind,
+        source_type: "direct_url",
+      });
+    }).catch((error: unknown) => {
+        bellAudio.current = undefined;
+        setPreviewing(false);
+        reportError(error);
+      });
     audio.onended = () => {
       bellAudio.current = undefined;
       setPreviewing(false);
@@ -111,6 +126,11 @@ export function useAudioPreviews({
     listeningAudio.current = audio;
     listeningUrl.current = url;
     setListeningPreviewing(true);
+    trackGoogleAnalyticsEvent("audio_play_attempt", {
+      audio_type: "listening",
+      error_context: "preview",
+      source_type: "user_file",
+    });
     let errorReported = false;
     const reportError = (error?: unknown) => {
       if (errorReported) return;
@@ -120,9 +140,7 @@ export function useAudioPreviews({
         audio_type: "listening",
         error_context: "preview",
         source_type: "user_file",
-        media_error_code: audio.error?.code
-          ? String(audio.error.code)
-          : undefined,
+        ...getAudioErrorDetails(error, audio),
       });
       onError(formatAudioError("영어 듣기 소리 확인", error, audio.error));
     };
@@ -133,13 +151,19 @@ export function useAudioPreviews({
       setListeningPreviewing(false);
       reportError();
     };
-    audio.play().catch((error: unknown) => {
-      URL.revokeObjectURL(url);
-      listeningAudio.current = undefined;
-      listeningUrl.current = undefined;
-      setListeningPreviewing(false);
-      reportError(error);
-    });
+    audio.play().then(() => {
+      trackGoogleAnalyticsEvent("audio_play_success", {
+        audio_type: "listening",
+        error_context: "preview",
+        source_type: "user_file",
+      });
+    }).catch((error: unknown) => {
+        URL.revokeObjectURL(url);
+        listeningAudio.current = undefined;
+        listeningUrl.current = undefined;
+        setListeningPreviewing(false);
+        reportError(error);
+      });
     audio.onended = () => {
       URL.revokeObjectURL(url);
       listeningAudio.current = undefined;

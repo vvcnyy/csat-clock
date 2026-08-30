@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { Download, Headphones, Loader2, Search } from "lucide-react";
 import { Button } from "./ui/button";
+import { trackGoogleAnalyticsEvent } from "../google-analytics";
 import {
   Dialog,
   DialogContent,
@@ -170,10 +171,13 @@ export function EbsiListeningDialog({ onChoose }: EbsiListeningDialogProps) {
   };
 
   const choosePaper = async (paper: EbsiPaper) => {
+    const startedAt = performance.now();
+    let httpStatus: number | undefined;
     setDownloadingId(paper.id);
     setError("");
     try {
       const response = await fetch(`${DOWNLOAD_ROOT}${paper.audioPath}`);
+      httpStatus = response.status;
       if (!response.ok) {
         throw new Error(`음원 요청 실패 (${response.status})`);
       }
@@ -185,8 +189,21 @@ export function EbsiListeningDialog({ onChoose }: EbsiListeningDialogProps) {
         lastModified: Date.now(),
       });
       await onChoose(file);
+      trackGoogleAnalyticsEvent("listening_download_success", {
+        listening_source: "ebsi",
+        file_type: "mp3",
+        http_status: httpStatus,
+        download_duration_ms: Math.round(performance.now() - startedAt),
+      });
       setOpen(false);
     } catch (cause) {
+      trackGoogleAnalyticsEvent("listening_download_error", {
+        listening_source: "ebsi",
+        file_type: "mp3",
+        http_status: httpStatus,
+        download_duration_ms: Math.round(performance.now() - startedAt),
+        error_name: cause instanceof Error ? cause.name : "unknown",
+      });
       setError(
         cause instanceof Error
           ? cause.message

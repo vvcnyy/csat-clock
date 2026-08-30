@@ -59,7 +59,7 @@ interface LandingPageProps {
   onCustomDurationChange: (minutes: number) => void;
   onCustomStartModeChange: (mode: CustomStartMode) => void;
   onCustomStartTimeChange: (time: string) => void;
-  onChooseEnglishFile: (file?: File) => void;
+  onChooseEnglishFile: (file?: File, source?: "local" | "ebsi") => void;
   onRemoveEnglishFile: () => void;
   onTestBell: () => void;
   onTestListening: () => void;
@@ -286,9 +286,9 @@ export function LandingPage({
                     <label className="file-picker">
                       <input
                         type="file"
-                        accept="audio/*"
+                        accept=".mp3,audio/mpeg,audio/mp3"
                         onChange={(event) =>
-                          onChooseEnglishFile(event.target.files?.[0])
+                          onChooseEnglishFile(event.target.files?.[0], "local")
                         }
                       />
                       <Upload size={16} />
@@ -296,7 +296,7 @@ export function LandingPage({
                     </label>
                     {!englishFile && (
                       <EbsiListeningDialog
-                        onChoose={(file) => onChooseEnglishFile(file)}
+                        onChoose={(file) => onChooseEnglishFile(file, "ebsi")}
                       />
                     )}
                   </div>
