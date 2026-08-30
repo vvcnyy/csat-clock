@@ -44,3 +44,21 @@ export function formatAudioError(
 
   return `[SND-E99] ${context}: 알 수 없는 이유로 소리를 재생하지 못했습니다.`;
 }
+
+export function getAudioErrorCode(
+  rejection?: unknown,
+  mediaError?: MediaError | null,
+) {
+  if (mediaError) return mediaErrorMessages[mediaError.code]?.code ?? "SND-E99";
+
+  const errorName =
+    rejection && typeof rejection === "object" && "name" in rejection
+      ? String(rejection.name)
+      : "";
+  if (errorName === "NotAllowedError" || errorName === "SecurityError") {
+    return "SND-E01";
+  }
+  if (errorName === "AbortError") return "SND-E02";
+  if (errorName === "NotSupportedError") return "SND-E06";
+  return "SND-E99";
+}

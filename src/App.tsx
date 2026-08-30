@@ -25,7 +25,18 @@ import {
   type SubjectId,
 } from "./schedule";
 import { clearEnglishFile, loadEnglishFile, saveEnglishFile } from "./storage";
-import { formatAudioError } from "./audio-errors";
+import { formatAudioError, getAudioErrorCode } from "./audio-errors";
+import { trackGoogleAnalyticsEvent } from "./google-analytics";
+
+const analyticsExamDetails = (session: Session) => ({
+  exam_mode: session.mode,
+  subject:
+    session.mode === "subject"
+      ? session.subjectId ?? "unknown"
+      : session.mode === "custom"
+        ? "custom"
+        : "all",
+});
 
 function App() {
   const savedSettings = readJson<
@@ -89,6 +100,7 @@ function App() {
   const restoredOnLoad = useRef(Boolean(readJson<Session>(SESSION_KEY)));
   const listeningResumeChecked = useRef(false);
   const controlsTimer = useRef<number | undefined>(undefined);
+  const completedTrackedSession = useRef<number | undefined>(undefined);
   const activeSessionStartedAt = useRef(session?.startedAt);
   activeSessionStartedAt.current = session?.startedAt;
   const {
@@ -224,6 +236,23 @@ function App() {
         URL.revokeObjectURL(currentBellObjectUrl.current);
       }
       currentBellObjectUrl.current = prefetchedUrl;
+      let errorReported = false;
+      const reportError = (error?: unknown) => {
+        if (errorReported) return;
+        errorReported = true;
+        trackGoogleAnalyticsEvent("audio_error", {
+          ...(session ? analyticsExamDetails(session) : {}),
+          error_code: getAudioErrorCode(error, audio.error),
+          audio_type: "bell",
+          error_context: "playback",
+          bell_kind: bell.kind,
+          source_type: prefetchedUrl ? "prefetched_blob" : "direct_url",
+          media_error_code: audio.error?.code
+            ? String(audio.error.code)
+            : undefined,
+        });
+        setAudioError(formatAudioError(bell.label, error, audio.error));
+      };
       audio.src = url;
       audio.preload = "auto";
       audio.volume = volume;
@@ -232,7 +261,7 @@ function App() {
           URL.revokeObjectURL(prefetchedUrl);
           currentBellObjectUrl.current = undefined;
         }
-        setAudioError(formatAudioError(bell.label, undefined, audio.error));
+        reportError();
       };
       audio.onended = () => {
         if (currentBellObjectUrl.current === prefetchedUrl && prefetchedUrl) {
@@ -244,11 +273,9 @@ function App() {
       audio.load();
       setCurrentBell(bell);
       setAudioError("");
-      audio.play().catch((error: unknown) =>
-        setAudioError(formatAudioError(bell.label, error, audio.error)),
-      );
+      audio.play().catch((error: unknown) => reportError(error));
     },
-    [getBellFile, volume],
+    [getBellFile, session, volume],
   );
 
   const playListening = useCallback(async (offsetSeconds = 0) => {
@@ -258,9 +285,25 @@ function App() {
     const audio = new Audio(url);
     audio.volume = listeningVolume;
     listeningAudio.current = audio;
+    let errorReported = false;
+    const reportError = (error?: unknown) => {
+      if (errorReported) return;
+      errorReported = true;
+      trackGoogleAnalyticsEvent("audio_error", {
+        ...(session ? analyticsExamDetails(session) : {}),
+        error_code: getAudioErrorCode(error, audio.error),
+        audio_type: "listening",
+        error_context: offsetSeconds > 0 ? "resume" : "playback",
+        source_type: "user_file",
+        media_error_code: audio.error?.code
+          ? String(audio.error.code)
+          : undefined,
+      });
+      setAudioError(formatAudioError("영어 듣기", error, audio.error));
+    };
     audio.onerror = () => {
       listeningPlayed.current = false;
-      setAudioError(formatAudioError("영어 듣기", undefined, audio.error));
+      reportError();
     };
     const startPlayback = () => {
       if (Number.isFinite(audio.duration) && offsetSeconds >= audio.duration) {
@@ -273,11 +316,18 @@ function App() {
       }
       audio
         .play()
-        .then(() => setListeningResumeRequired(false))
+        .then(() => {
+          setListeningResumeRequired(false);
+          trackGoogleAnalyticsEvent("listening_start", {
+            ...(session ? analyticsExamDetails(session) : {}),
+            start_type: offsetSeconds > 0 ? "resume" : "scheduled",
+            offset_seconds: Math.floor(offsetSeconds),
+          });
+        })
         .catch((error: unknown) => {
           listeningPlayed.current = false;
           if (offsetSeconds > 0) setListeningResumeRequired(true);
-          setAudioError(formatAudioError("영어 듣기", error, audio.error));
+          reportError(error);
         });
     };
     if (audio.readyState >= HTMLMediaElement.HAVE_METADATA) startPlayback();
@@ -287,7 +337,7 @@ function App() {
       if (listeningAudio.current === audio) listeningAudio.current = undefined;
       listeningWasPlayingBeforePause.current = false;
     };
-  }, [englishFile, listeningVolume]);
+  }, [englishFile, listeningVolume, session]);
 
   useEffect(() => {
     if (!session || session.pausedAt || countdown > 0) return;
@@ -533,6 +583,21 @@ function App() {
     setCurrentBell(null);
     setExamCompleted(false);
     setAudioError("");
+    completedTrackedSession.current = undefined;
+    trackGoogleAnalyticsEvent("exam_start", {
+      exam_mode: mode,
+      subject:
+        mode === "subject" ? subjectId : mode === "custom" ? "custom" : "all",
+      start_at_main_bell: mode === "subject" && startAtMainBell,
+      listening_timing:
+        mode === "sync" || (mode === "subject" && subjectId === "english")
+          ? listeningTiming
+          : "none",
+      has_listening_audio: Boolean(englishFile),
+      custom_duration_minutes:
+        mode === "custom" ? safeCustomDuration : undefined,
+      custom_start_mode: mode === "custom" ? customStartMode : undefined,
+    });
     activeSessionStartedAt.current = startedAt;
     setSession({
       mode,
@@ -555,6 +620,12 @@ function App() {
 
   const togglePause = () => {
     if (!session || session.mode === "sync") return;
+    trackGoogleAnalyticsEvent(session.pausedAt ? "exam_resume" : "exam_pause", {
+      ...analyticsExamDetails(session),
+      pause_seconds: session.pausedAt
+        ? Math.max(0, Math.round((Date.now() - session.pausedAt) / 1000))
+        : undefined,
+    });
     setSession((current) => {
       if (!current) return current;
       if (current.pausedAt) {
@@ -589,6 +660,17 @@ function App() {
     const firstEvent = toSeconds(subjectEvents[0]?.at ?? selectedSubject.start);
     const clockMs = session.pausedAt ?? Date.now();
     const targetElapsed = Math.max(0, targetSeconds - firstEvent) * 1000;
+    const targetBell = subjectEvents.find(
+      (bell) => getBellSeconds(bell) === targetSeconds,
+    );
+    trackGoogleAnalyticsEvent("exam_skip", {
+      ...analyticsExamDetails(session),
+      skip_type:
+        skipTargets && targetSeconds === skipTargets.direct
+          ? "direct"
+          : "next_bell",
+      target_kind: targetBell?.kind ?? "exam_start",
+    });
 
     bellAudio.current?.pause();
     setCurrentBell(null);
@@ -624,7 +706,14 @@ function App() {
     );
   };
 
-  const exitExam = useCallback(() => {
+  const exitExam = useCallback((reason: string) => {
+    if (session) {
+      trackGoogleAnalyticsEvent("exam_exit", {
+        ...analyticsExamDetails(session),
+        exit_reason: reason,
+        completed: examCompleted || reason !== "user",
+      });
+    }
     activeSessionStartedAt.current = undefined;
     stopBellPreview();
     stopListeningPreview();
@@ -645,7 +734,7 @@ function App() {
     restoredOnLoad.current = false;
     listeningResumeChecked.current = false;
     document.exitFullscreen?.().catch(() => undefined);
-  }, [clearBellPrefetch, stopBellPreview, stopListeningPreview]);
+  }, [clearBellPrefetch, examCompleted, session, stopBellPreview, stopListeningPreview]);
 
   useEffect(() => {
     if (
@@ -660,16 +749,26 @@ function App() {
 
     setExamCompleted(true);
     setControlsVisible(true);
+    if (completedTrackedSession.current !== session.startedAt) {
+      completedTrackedSession.current = session.startedAt;
+      trackGoogleAnalyticsEvent("exam_complete", {
+        ...analyticsExamDetails(session),
+        elapsed_seconds: Math.max(
+          0,
+          Math.round((Date.now() - session.startedAt - session.pausedTotal) / 1000),
+        ),
+      });
+    }
 
     const secondsUntilHome =
       examEndSeconds + EXAM_COMPLETION_DELAY_SECONDS - virtualSeconds;
     if (secondsUntilHome <= 0) {
-      exitExam();
+      exitExam("auto_after_complete");
       return;
     }
 
     const timer = window.setTimeout(
-      exitExam,
+      () => exitExam("auto_after_complete"),
       Math.ceil(secondsUntilHome * 1000),
     );
     return () => window.clearTimeout(timer);
@@ -703,9 +802,23 @@ function App() {
       .then(() => {
         setListeningResumeRequired(false);
         setAudioError("");
+        trackGoogleAnalyticsEvent("listening_resume", {
+          ...(session ? analyticsExamDetails(session) : {}),
+          offset_seconds: Math.floor(offset),
+        });
       })
       .catch((error: unknown) => {
         listeningPlayed.current = false;
+        trackGoogleAnalyticsEvent("audio_error", {
+          ...(session ? analyticsExamDetails(session) : {}),
+          error_code: getAudioErrorCode(error, audio.error),
+          audio_type: "listening",
+          error_context: "manual_resume",
+          source_type: "user_file",
+          media_error_code: audio.error?.code
+            ? String(audio.error.code)
+            : undefined,
+        });
         setAudioError(formatAudioError("영어 듣기 계속하기", error, audio.error));
       });
   };
@@ -773,7 +886,8 @@ function App() {
         setListeningVolume(next);
         if (listeningAudio.current) listeningAudio.current.volume = next;
       }}
-      onExit={exitExam}
+      onExit={() => exitExam("user")}
+      onCompleteReturn={() => exitExam("completed_confirm")}
       onResumeListening={resumeListeningFromCurrentTime}
     />
   );

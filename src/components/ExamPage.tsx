@@ -59,6 +59,7 @@ interface ExamPageProps {
   onVolumeChange: (volume: number) => void;
   onListeningVolumeChange: (volume: number) => void;
   onExit: () => void;
+  onCompleteReturn: () => void;
   onResumeListening: () => void;
 }
 
@@ -85,6 +86,7 @@ export function ExamPage({
   onVolumeChange,
   onListeningVolumeChange,
   onExit,
+  onCompleteReturn,
   onResumeListening,
 }: ExamPageProps) {
   const fullscreenSupported = Boolean(document.documentElement.requestFullscreen);
@@ -263,7 +265,7 @@ export function ExamPage({
       <ExamCompletedDialog
         open={examCompleted}
         subjectName={activeSubject?.name ?? "시험"}
-        onReturn={onExit}
+        onReturn={onCompleteReturn}
       />
     </main>
   );

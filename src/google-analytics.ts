@@ -15,6 +15,11 @@ declare global {
 
 const measurementId = import.meta.env.VITE_GA_MEASUREMENT_ID?.trim();
 
+export type AnalyticsParameters = Record<
+  string,
+  string | number | boolean | undefined
+>;
+
 export function initializeGoogleAnalytics() {
   if (!measurementId || !/^G-[A-Z0-9]+$/i.test(measurementId)) return;
   if (document.querySelector("script[data-google-analytics]")) return;
@@ -33,4 +38,16 @@ export function initializeGoogleAnalytics() {
     page_title: document.title,
     page_location: window.location.href,
   });
+}
+
+export function trackGoogleAnalyticsEvent(
+  eventName: string,
+  parameters: AnalyticsParameters = {},
+) {
+  if (!measurementId || !window.gtag) return;
+
+  const definedParameters = Object.fromEntries(
+    Object.entries(parameters).filter(([, value]) => value !== undefined),
+  );
+  window.gtag("event", eventName, definedParameters);
 }
