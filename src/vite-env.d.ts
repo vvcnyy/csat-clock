@@ -2,6 +2,7 @@
 
 interface ImportMetaEnv {
   readonly VITE_GA_MEASUREMENT_ID?: string;
+  readonly VITE_AUDIO_UNLOCK_SCOPE?: "apple" | "all";
 }
 
 interface ImportMeta {

@@ -50,6 +50,7 @@ interface LandingPageProps {
   previewing: boolean;
   listeningPreviewing: boolean;
   audioError: string;
+  audioUnlockStatus: "not_required" | "required" | "pending" | "active" | "failed";
   onModeChange: (mode: Mode) => void;
   onSubjectChange: (subject: SubjectId) => void;
   onVolumeChange: (volume: number) => void;
@@ -64,6 +65,7 @@ interface LandingPageProps {
   onTestBell: () => void;
   onTestListening: () => void;
   onStart: () => void;
+  onUnlockAudio: () => void;
 }
 
 export function LandingPage({
@@ -80,6 +82,7 @@ export function LandingPage({
   previewing,
   listeningPreviewing,
   audioError,
+  audioUnlockStatus,
   onModeChange,
   onSubjectChange,
   onVolumeChange,
@@ -94,6 +97,7 @@ export function LandingPage({
   onTestBell,
   onTestListening,
   onStart,
+  onUnlockAudio,
 }: LandingPageProps) {
   const englishNeeded =
     mode === "sync" || (mode === "subject" && subjectId === "english");
@@ -337,6 +341,21 @@ export function LandingPage({
             />
           </div>
           {audioError && <p className="error">{audioError}</p>}
+          {(audioUnlockStatus === "required" ||
+            audioUnlockStatus === "pending" ||
+            audioUnlockStatus === "failed") && (
+            <Button
+              type="button"
+              variant="outline"
+              disabled={audioUnlockStatus === "pending"}
+              onClick={onUnlockAudio}
+            >
+              <Volume2 size={16} />
+              {audioUnlockStatus === "pending"
+                ? "타종 소리 활성화 중…"
+                : "타종 소리 활성화"}
+            </Button>
+          )}
         </CardContent>
 
         <CardFooter>

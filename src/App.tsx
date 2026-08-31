@@ -32,6 +32,43 @@ import {
 } from "./audio-errors";
 import { trackGoogleAnalyticsEvent } from "./google-analytics";
 
+type AudioUnlockStatus = "not_required" | "required" | "pending" | "active" | "failed";
+
+const audioUnlockScope = import.meta.env.VITE_AUDIO_UNLOCK_SCOPE?.trim().toLowerCase();
+const applePlatform =
+  /iPhone|iPad|iPod|Macintosh/i.test(navigator.userAgent) ||
+  /iPhone|iPad|iPod|Mac/i.test(navigator.platform) ||
+  (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+const audioUnlockEnabled = audioUnlockScope === "all" || applePlatform;
+
+const createSilentWavUrl = () => {
+  const sampleRate = 8000;
+  const sampleCount = 800;
+  const buffer = new ArrayBuffer(44 + sampleCount);
+  const view = new DataView(buffer);
+  const writeText = (offset: number, value: string) => {
+    for (let index = 0; index < value.length; index += 1) {
+      view.setUint8(offset + index, value.charCodeAt(index));
+    }
+  };
+  writeText(0, "RIFF");
+  view.setUint32(4, 36 + sampleCount, true);
+  writeText(8, "WAVEfmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate, true);
+  view.setUint16(32, 1, true);
+  view.setUint16(34, 8, true);
+  writeText(36, "data");
+  view.setUint32(40, sampleCount, true);
+  for (let index = 44; index < buffer.byteLength; index += 1) {
+    view.setUint8(index, 128);
+  }
+  return URL.createObjectURL(new Blob([buffer], { type: "audio/wav" }));
+};
+
 const analyticsExamDetails = (session: Session) => ({
   exam_mode: session.mode,
   subject:
@@ -104,9 +141,15 @@ function App() {
   const [controlsVisible, setControlsVisible] = useState(false);
   const [examCompleted, setExamCompleted] = useState(false);
   const [audioError, setAudioError] = useState("");
+  const [audioUnlockStatus, setAudioUnlockStatus] = useState<AudioUnlockStatus>(
+    audioUnlockEnabled ? "required" : "not_required",
+  );
   const previousVirtual = useRef<number | null>(null);
   const playedEvents = useRef(new Set<string>());
   const bellAudio = useRef<HTMLAudioElement | undefined>(undefined);
+  const audioUnlockPromise = useRef<Promise<boolean> | undefined>(undefined);
+  const audioUnlockObjectUrl = useRef<string | undefined>(undefined);
+  const beginPending = useRef(false);
   const prefetchedBells = useRef(new Map<string, string>());
   const pendingBellFetches = useRef(new Set<string>());
   const desiredPrefetchIds = useRef(new Set<string>());
@@ -244,6 +287,78 @@ function App() {
     prefetchedBells.current.clear();
   }, []);
 
+  const unlockBellAudio = useCallback((): Promise<boolean> => {
+    if (!audioUnlockEnabled || audioUnlockStatus === "active") {
+      return Promise.resolve(true);
+    }
+    if (audioUnlockPromise.current) return audioUnlockPromise.current;
+
+    setAudioUnlockStatus("pending");
+    setAudioError("");
+    const audio = bellAudio.current ?? new Audio();
+    bellAudio.current = audio;
+    audio.pause();
+    if (audioUnlockObjectUrl.current) {
+      URL.revokeObjectURL(audioUnlockObjectUrl.current);
+    }
+    const silentUrl = createSilentWavUrl();
+    audioUnlockObjectUrl.current = silentUrl;
+    audio.muted = false;
+    audio.volume = 1;
+    audio.preload = "auto";
+    audio.src = silentUrl;
+    audio.load();
+    audio.onended = () => {
+      if (audioUnlockObjectUrl.current === silentUrl) {
+        URL.revokeObjectURL(silentUrl);
+        audioUnlockObjectUrl.current = undefined;
+      }
+    };
+    trackGoogleAnalyticsEvent("audio_unlock_attempt", {
+      unlock_scope: audioUnlockScope === "all" ? "all" : "apple",
+      restore: Boolean(session),
+    });
+
+    let playResult: Promise<void> | undefined;
+    try {
+      playResult = audio.play();
+    } catch (error) {
+      playResult = Promise.reject(error);
+    }
+    const pending = Promise.resolve(playResult).then(
+      () => {
+        setAudioUnlockStatus("active");
+        setAudioError("");
+        trackGoogleAnalyticsEvent("audio_unlock_success", {
+          unlock_scope: audioUnlockScope === "all" ? "all" : "apple",
+          restore: Boolean(session),
+        });
+        return true;
+      },
+      (error: unknown) => {
+        if (audioUnlockObjectUrl.current === silentUrl) {
+          URL.revokeObjectURL(silentUrl);
+          audioUnlockObjectUrl.current = undefined;
+        }
+        setAudioUnlockStatus("failed");
+        setAudioError(
+          `${formatAudioError("타종 소리 활성화", error, audio.error)} 아래 버튼을 눌러 다시 시도해 주세요.`,
+        );
+        trackGoogleAnalyticsEvent("audio_unlock_error", {
+          unlock_scope: audioUnlockScope === "all" ? "all" : "apple",
+          restore: Boolean(session),
+          error_code: getAudioErrorCode(error, audio.error),
+          ...getAudioErrorDetails(error, audio),
+        });
+        return false;
+      },
+    ).finally(() => {
+      audioUnlockPromise.current = undefined;
+    });
+    audioUnlockPromise.current = pending;
+    return pending;
+  }, [audioUnlockStatus, session]);
+
   const getBellFile = useCallback(
     (bell: BellEvent) =>
       session?.mode === "subject" && bell.shortFile
@@ -330,6 +445,22 @@ function App() {
 
   const playBell = useCallback(
     (bell: BellEvent, expectedAtMs = Date.now()) => {
+      if (audioUnlockEnabled && audioUnlockStatus !== "active") {
+        if (audioUnlockStatus !== "pending") setAudioUnlockStatus("required");
+        setAudioError(
+          "[SND-E01] 예약된 타종 전에 소리를 활성화하지 못했습니다. 타종 소리 활성화 버튼을 눌러 주세요.",
+        );
+        trackGoogleAnalyticsEvent("audio_unlock_required", {
+          ...(session ? analyticsExamDetails(session) : {}),
+          bell_kind: bell.kind,
+          unlock_scope: audioUnlockScope === "all" ? "all" : "apple",
+        });
+        return;
+      }
+      if (audioUnlockObjectUrl.current) {
+        URL.revokeObjectURL(audioUnlockObjectUrl.current);
+        audioUnlockObjectUrl.current = undefined;
+      }
       const prefetchedUrl = prefetchedBells.current.get(bell.id);
       const url =
         prefetchedUrl ?? `/sound/${encodeURIComponent(getBellFile(bell))}`;
@@ -347,9 +478,13 @@ function App() {
       const reportError = (error?: unknown) => {
         if (errorReported) return;
         errorReported = true;
+        const errorCode = getAudioErrorCode(error, audio.error);
+        if (audioUnlockEnabled && errorCode === "SND-E01") {
+          setAudioUnlockStatus("failed");
+        }
         trackGoogleAnalyticsEvent("audio_error", {
           ...(session ? analyticsExamDetails(session) : {}),
-          error_code: getAudioErrorCode(error, audio.error),
+          error_code: errorCode,
           audio_type: "bell",
           error_context: "playback",
           bell_kind: bell.kind,
@@ -399,7 +534,7 @@ function App() {
       });
       audio.play().catch((error: unknown) => reportError(error));
     },
-    [getBellFile, session, volume],
+    [audioUnlockStatus, getBellFile, session, volume],
   );
 
   const playListening = useCallback(async (offsetSeconds = 0) => {
@@ -698,14 +833,7 @@ function App() {
     }
   };
 
-  const begin = () => {
-    if (
-      mode === "custom" &&
-      (!Number.isFinite(customDurationMinutes) || customDurationMinutes <= 0)
-    ) {
-      setAudioError("시험 시간을 1분 이상 입력해 주세요.");
-      return;
-    }
+  const startExam = () => {
     stopBellPreview();
     stopListeningPreview();
     clearBellPrefetch();
@@ -716,6 +844,10 @@ function App() {
       } catch {
         // Metadata가 없는 구형 TV 브라우저에서는 탐색이 실패할 수 있습니다.
       }
+    }
+    if (audioUnlockObjectUrl.current) {
+      URL.revokeObjectURL(audioUnlockObjectUrl.current);
+      audioUnlockObjectUrl.current = undefined;
     }
     if (currentBellObjectUrl.current) {
       URL.revokeObjectURL(currentBellObjectUrl.current);
@@ -779,12 +911,33 @@ function App() {
       customStartSeconds:
         mode === "custom" ? customStartSeconds : undefined,
     });
+  };
+
+  const begin = () => {
+    if (beginPending.current) return;
+    if (
+      mode === "custom" &&
+      (!Number.isFinite(customDurationMinutes) || customDurationMinutes <= 0)
+    ) {
+      setAudioError("시험 시간을 1분 이상 입력해 주세요.");
+      return;
+    }
     document.documentElement.requestFullscreen?.().catch((error) =>
       trackGoogleAnalyticsEvent("fullscreen_failed", {
         fullscreen_action: "automatic_enter",
         error_name: error instanceof Error ? error.name : "unknown",
       }),
     );
+    if (!audioUnlockEnabled || audioUnlockStatus === "active") {
+      startExam();
+      return;
+    }
+
+    beginPending.current = true;
+    void unlockBellAudio().then((unlocked) => {
+      beginPending.current = false;
+      if (unlocked) startExam();
+    });
   };
 
   const togglePause = () => {
@@ -842,6 +995,10 @@ function App() {
     });
 
     bellAudio.current?.pause();
+    if (audioUnlockObjectUrl.current) {
+      URL.revokeObjectURL(audioUnlockObjectUrl.current);
+      audioUnlockObjectUrl.current = undefined;
+    }
     setCurrentBell(null);
     setExamCompleted(false);
     for (const bell of subjectEvents) {
@@ -889,6 +1046,10 @@ function App() {
     stopListeningPreview();
     clearBellPrefetch();
     bellAudio.current?.pause();
+    if (audioUnlockObjectUrl.current) {
+      URL.revokeObjectURL(audioUnlockObjectUrl.current);
+      audioUnlockObjectUrl.current = undefined;
+    }
     if (currentBellObjectUrl.current) {
       URL.revokeObjectURL(currentBellObjectUrl.current);
       currentBellObjectUrl.current = undefined;
@@ -1023,6 +1184,7 @@ function App() {
         previewing={previewing}
         listeningPreviewing={listeningPreviewing}
         audioError={audioError}
+        audioUnlockStatus={audioUnlockStatus}
         onModeChange={(next) => {
           trackGoogleAnalyticsEvent("exam_setup_change", { setting_name: "exam_mode", setting_value: next });
           setMode(next);
@@ -1052,6 +1214,7 @@ function App() {
         onTestBell={testBell}
         onTestListening={testListening}
         onStart={begin}
+        onUnlockAudio={() => void unlockBellAudio()}
       />
     );
   }
@@ -1073,6 +1236,7 @@ function App() {
       listeningResumeRequired={listeningResumeRequired}
       examCompleted={examCompleted}
       audioError={audioError}
+      audioUnlockStatus={audioUnlockStatus}
       onRevealControls={revealControls}
       onSkip={skipTo}
       onTogglePause={togglePause}
@@ -1091,6 +1255,7 @@ function App() {
         exitExam("completed_confirm");
       }}
       onResumeListening={resumeListeningFromCurrentTime}
+      onUnlockAudio={() => void unlockBellAudio()}
     />
   );
 }

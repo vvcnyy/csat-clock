@@ -6,6 +6,7 @@ import {
   SkipForward,
   Sun,
   TriangleAlert,
+  Volume2,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import AnalogClock from "../AnalogClock";
@@ -53,6 +54,7 @@ interface ExamPageProps {
   listeningResumeRequired: boolean;
   examCompleted: boolean;
   audioError: string;
+  audioUnlockStatus: "not_required" | "required" | "pending" | "active" | "failed";
   onRevealControls: () => void;
   onSkip: (target: number) => void;
   onTogglePause: () => void;
@@ -62,6 +64,7 @@ interface ExamPageProps {
   onExit: () => void;
   onCompleteReturn: () => void;
   onResumeListening: () => void;
+  onUnlockAudio: () => void;
 }
 
 export function ExamPage({
@@ -80,6 +83,7 @@ export function ExamPage({
   listeningResumeRequired,
   examCompleted,
   audioError,
+  audioUnlockStatus,
   onRevealControls,
   onSkip,
   onTogglePause,
@@ -89,6 +93,7 @@ export function ExamPage({
   onExit,
   onCompleteReturn,
   onResumeListening,
+  onUnlockAudio,
 }: ExamPageProps) {
   const fullscreenSupported = Boolean(document.documentElement.requestFullscreen);
   const [isFullscreen, setIsFullscreen] = useState(Boolean(document.fullscreenElement));
@@ -273,6 +278,22 @@ export function ExamPage({
           <Button size="sm" onClick={onResumeListening}>
             <Play size={14} fill="currentColor" />
             영어 듣기 계속하기
+          </Button>
+        </div>
+      )}
+      {(audioUnlockStatus === "required" ||
+        audioUnlockStatus === "pending" ||
+        audioUnlockStatus === "failed") && (
+        <div className="audio-unlock">
+          <Button
+            size="sm"
+            disabled={audioUnlockStatus === "pending"}
+            onClick={onUnlockAudio}
+          >
+            <Volume2 size={14} />
+            {audioUnlockStatus === "pending"
+              ? "타종 소리 활성화 중…"
+              : "타종 소리 활성화"}
           </Button>
         </div>
       )}

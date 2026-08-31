@@ -742,6 +742,17 @@ button { cursor: pointer; }
   background: rgba(9, 9, 11, .94);
   box-shadow: 0 8px 30px rgba(0, 0, 0, .45);
 }
+.audio-unlock {
+  position: fixed;
+  z-index: 9;
+  right: 16px;
+  bottom: 128px;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: rgba(9, 9, 11, .94);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, .45);
+}
 .wake-warning {
   position: fixed;
   bottom: 16px;
@@ -809,6 +820,7 @@ button { cursor: pointer; }
     justify-content: center;
   }
   .listening-resume { right: 8px; bottom: 72px; }
+  .audio-unlock { right: 8px; bottom: 124px; }
   .skip-controls { width: 100%; justify-content: center; }
   .compact-volume { grid-template-columns: 70px; gap: 2px; }
 }
@@ -874,6 +886,10 @@ button { cursor: pointer; }
   .listening-resume {
     right: max(8px, env(safe-area-inset-right));
     bottom: max(68px, calc(env(safe-area-inset-bottom) + 68px));
+  }
+  .audio-unlock {
+    right: max(8px, env(safe-area-inset-right));
+    bottom: max(120px, calc(env(safe-area-inset-bottom) + 120px));
   }
   .wake-warning {
     top: max(8px, env(safe-area-inset-top));
