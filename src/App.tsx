@@ -31,6 +31,7 @@ import {
   getAudioErrorDetails,
 } from "./audio-errors";
 import { trackGoogleAnalyticsEvent } from "./google-analytics";
+import { createPlaybackLifetime, unloadAudio } from "./audio-lifecycle";
 
 type AudioUnlockStatus = "not_required" | "required" | "pending" | "active" | "failed";
 
@@ -147,6 +148,8 @@ function App() {
   const previousVirtual = useRef<number | null>(null);
   const playedEvents = useRef(new Set<string>());
   const bellAudio = useRef<HTMLAudioElement | undefined>(undefined);
+  const bellLifetime = useRef(createPlaybackLifetime());
+  const prefetchGeneration = useRef(0);
   const audioUnlockPromise = useRef<Promise<boolean> | undefined>(undefined);
   const audioUnlockObjectUrl = useRef<string | undefined>(undefined);
   const beginPending = useRef(false);
@@ -280,11 +283,27 @@ function App() {
   ]);
 
   const clearBellPrefetch = useCallback(() => {
+    prefetchGeneration.current += 1;
+    pendingBellFetches.current.clear();
     desiredPrefetchIds.current.clear();
     for (const url of prefetchedBells.current.values()) {
       URL.revokeObjectURL(url);
     }
     prefetchedBells.current.clear();
+  }, []);
+
+  const stopBell = useCallback(() => {
+    bellLifetime.current.invalidate();
+    if (bellAudio.current) unloadAudio(bellAudio.current);
+    // Release object URLs only after detaching the media source.
+    if (currentBellObjectUrl.current) {
+      URL.revokeObjectURL(currentBellObjectUrl.current);
+      currentBellObjectUrl.current = undefined;
+    }
+    if (audioUnlockObjectUrl.current) {
+      URL.revokeObjectURL(audioUnlockObjectUrl.current);
+      audioUnlockObjectUrl.current = undefined;
+    }
   }, []);
 
   const unlockBellAudio = useCallback((): Promise<boolean> => {
@@ -400,6 +419,7 @@ function App() {
       }
 
       pendingBellFetches.current.add(bell.id);
+      const fetchGeneration = prefetchGeneration.current;
       const url = `/sound/${encodeURIComponent(getBellFile(bell))}`;
       const prefetchStartedAt = performance.now();
       let httpStatus: number | undefined;
@@ -410,6 +430,7 @@ function App() {
           return response.blob();
         })
         .then((blob) => {
+          if (fetchGeneration !== prefetchGeneration.current) return;
           if (!desiredPrefetchIds.current.has(bell.id)) return;
           prefetchedBells.current.set(bell.id, URL.createObjectURL(blob));
           trackGoogleAnalyticsEvent("audio_prefetch_success", {
@@ -421,8 +442,11 @@ function App() {
           });
         })
         .then(
-          () => pendingBellFetches.current.delete(bell.id),
+          () => {
+            if (fetchGeneration === prefetchGeneration.current) pendingBellFetches.current.delete(bell.id);
+          },
           (error: unknown) => {
+            if (fetchGeneration !== prefetchGeneration.current) return;
             pendingBellFetches.current.delete(bell.id);
             trackGoogleAnalyticsEvent("audio_prefetch_error", {
               ...analyticsExamDetails(session),
@@ -445,6 +469,8 @@ function App() {
 
   const playBell = useCallback(
     (bell: BellEvent, expectedAtMs = Date.now()) => {
+      if (!session || activeSessionStartedAt.current !== session.startedAt ||
+          session.pausedAt || (session.countdownUntil ?? 0) > Date.now()) return;
       if (audioUnlockEnabled && audioUnlockStatus !== "active") {
         if (audioUnlockStatus !== "pending") setAudioUnlockStatus("required");
         setAudioError(
@@ -457,10 +483,6 @@ function App() {
         });
         return;
       }
-      if (audioUnlockObjectUrl.current) {
-        URL.revokeObjectURL(audioUnlockObjectUrl.current);
-        audioUnlockObjectUrl.current = undefined;
-      }
       const prefetchedUrl = prefetchedBells.current.get(bell.id);
       const url =
         prefetchedUrl ?? `/sound/${encodeURIComponent(getBellFile(bell))}`;
@@ -468,15 +490,13 @@ function App() {
       const audio = bellAudio.current ?? new Audio();
       bellAudio.current = audio;
 
-      audio.pause();
-      if (currentBellObjectUrl.current) {
-        URL.revokeObjectURL(currentBellObjectUrl.current);
-      }
+      stopBell();
+      const isCurrent = bellLifetime.current.capture();
       currentBellObjectUrl.current = prefetchedUrl;
       let errorReported = false;
       let successReported = false;
       const reportError = (error?: unknown) => {
-        if (errorReported) return;
+        if (!isCurrent() || errorReported) return;
         errorReported = true;
         const errorCode = getAudioErrorCode(error, audio.error);
         if (audioUnlockEnabled && errorCode === "SND-E01") {
@@ -496,7 +516,9 @@ function App() {
       audio.src = url;
       audio.preload = "auto";
       audio.volume = volume;
+      audio.muted = false;
       audio.onerror = () => {
+        if (!isCurrent()) return;
         if (currentBellObjectUrl.current === prefetchedUrl && prefetchedUrl) {
           URL.revokeObjectURL(prefetchedUrl);
           currentBellObjectUrl.current = undefined;
@@ -504,7 +526,7 @@ function App() {
         reportError();
       };
       audio.onplaying = () => {
-        if (successReported) return;
+        if (!isCurrent() || successReported) return;
         successReported = true;
         trackGoogleAnalyticsEvent("audio_play_success", {
           ...(session ? analyticsExamDetails(session) : {}),
@@ -516,10 +538,8 @@ function App() {
         });
       };
       audio.onended = () => {
-        if (currentBellObjectUrl.current === prefetchedUrl && prefetchedUrl) {
-          URL.revokeObjectURL(prefetchedUrl);
-          currentBellObjectUrl.current = undefined;
-        }
+        if (!isCurrent()) return;
+        stopBell();
         setCurrentBell((current) => (current?.id === bell.id ? null : current));
       };
       audio.load();
@@ -534,7 +554,7 @@ function App() {
       });
       audio.play().catch((error: unknown) => reportError(error));
     },
-    [audioUnlockStatus, getBellFile, session, volume],
+    [audioUnlockStatus, getBellFile, session, stopBell, volume],
   );
 
   const playListening = useCallback(async (offsetSeconds = 0) => {
@@ -837,22 +857,8 @@ function App() {
     stopBellPreview();
     stopListeningPreview();
     clearBellPrefetch();
-    if (bellAudio.current) {
-      bellAudio.current.pause();
-      try {
-        bellAudio.current.currentTime = 0;
-      } catch {
-        // Metadata가 없는 구형 TV 브라우저에서는 탐색이 실패할 수 있습니다.
-      }
-    }
-    if (audioUnlockObjectUrl.current) {
-      URL.revokeObjectURL(audioUnlockObjectUrl.current);
-      audioUnlockObjectUrl.current = undefined;
-    }
-    if (currentBellObjectUrl.current) {
-      URL.revokeObjectURL(currentBellObjectUrl.current);
-      currentBellObjectUrl.current = undefined;
-    }
+    stopBell();
+    if (bellAudio.current) bellAudio.current.volume = volume;
     if (listeningAudio.current) {
       listeningAudio.current.pause();
       listeningAudio.current.currentTime = 0;
@@ -922,6 +928,8 @@ function App() {
       setAudioError("시험 시간을 1분 이상 입력해 주세요.");
       return;
     }
+    // Detach the old source before fullscreen can reactivate a TV media pipeline.
+    if (!audioUnlockPromise.current) stopBell();
     document.documentElement.requestFullscreen?.().catch((error) =>
       trackGoogleAnalyticsEvent("fullscreen_failed", {
         fullscreen_action: "automatic_enter",
@@ -966,7 +974,7 @@ function App() {
           pausedTotal: current.pausedTotal + pauseLength,
         };
       }
-      bellAudio.current?.pause();
+      stopBell();
       listeningWasPlayingBeforePause.current = Boolean(
         listeningAudio.current &&
           !listeningAudio.current.paused &&
@@ -994,11 +1002,7 @@ function App() {
       target_kind: targetBell?.kind ?? "exam_start",
     });
 
-    bellAudio.current?.pause();
-    if (audioUnlockObjectUrl.current) {
-      URL.revokeObjectURL(audioUnlockObjectUrl.current);
-      audioUnlockObjectUrl.current = undefined;
-    }
+    stopBell();
     setCurrentBell(null);
     setExamCompleted(false);
     for (const bell of subjectEvents) {
@@ -1045,15 +1049,7 @@ function App() {
     stopBellPreview();
     stopListeningPreview();
     clearBellPrefetch();
-    bellAudio.current?.pause();
-    if (audioUnlockObjectUrl.current) {
-      URL.revokeObjectURL(audioUnlockObjectUrl.current);
-      audioUnlockObjectUrl.current = undefined;
-    }
-    if (currentBellObjectUrl.current) {
-      URL.revokeObjectURL(currentBellObjectUrl.current);
-      currentBellObjectUrl.current = undefined;
-    }
+    stopBell();
     listeningAudio.current?.pause();
     setSession(null);
     setCurrentBell(null);
@@ -1065,7 +1061,7 @@ function App() {
     restoredOnLoad.current = false;
     listeningResumeChecked.current = false;
     document.exitFullscreen?.().catch(() => undefined);
-  }, [clearBellPrefetch, examCompleted, examEndSeconds, examStartSeconds, session, stopBellPreview, stopListeningPreview, virtualSeconds]);
+  }, [clearBellPrefetch, examCompleted, examEndSeconds, examStartSeconds, session, stopBell, stopBellPreview, stopListeningPreview, virtualSeconds]);
 
   useEffect(() => {
     if (
