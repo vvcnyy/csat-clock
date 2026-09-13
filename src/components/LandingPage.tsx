@@ -17,6 +17,7 @@ import type {
 import { subjects, type SubjectId } from "../schedule";
 import { EbsiListeningDialog } from "./EbsiListeningDialog";
 import { ScheduleInfoDialog } from "./ScheduleInfoDialog";
+import { FeedbackDialog } from "./FeedbackDialog";
 import { Button } from "./ui/button";
 import {
   Card,
@@ -365,7 +366,10 @@ export function LandingPage({
         </CardFooter>
       </Card>
 
-      <ScheduleInfoDialog />
+      <div className="landing-links">
+        <ScheduleInfoDialog />
+        <FeedbackDialog />
+      </div>
       <footer className="copyright">
         © 2026 vvcnyy. 개인 학습용 서비스이며, 업로드한 음원의 저작권과
         이용 책임은 사용자에게 있습니다.
