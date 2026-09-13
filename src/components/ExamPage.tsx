@@ -27,11 +27,14 @@ import {
 } from "./ui/alert-dialog";
 import { Button } from "./ui/button";
 import { Slider } from "./ui/slider";
+import { AudioDebugPanel } from "./AudioDebugPanel";
+import type { AudioDebugLog } from "./AudioDebugPanel";
 
 interface SkipTargets {
   next: number;
   direct: number;
 }
+
 
 interface ExamPageProps {
   session: Session;
@@ -65,6 +68,8 @@ interface ExamPageProps {
   onCompleteReturn: () => void;
   onResumeListening: () => void;
   onUnlockAudio: () => void;
+  audioDebugLogs: AudioDebugLog[];
+  onClearAudioDebugLogs: () => void;
 }
 
 export function ExamPage({
@@ -94,6 +99,8 @@ export function ExamPage({
   onCompleteReturn,
   onResumeListening,
   onUnlockAudio,
+  audioDebugLogs,
+  onClearAudioDebugLogs,
 }: ExamPageProps) {
   const fullscreenSupported = Boolean(document.documentElement.requestFullscreen);
   const [isFullscreen, setIsFullscreen] = useState(Boolean(document.fullscreenElement));
@@ -176,6 +183,9 @@ export function ExamPage({
       onTouchStart={onRevealControls}
       onClick={onRevealControls}
     >
+      {import.meta.env.VITE_AUDIO_DEBUG === "true" && (
+        <AudioDebugPanel logs={audioDebugLogs} onClear={onClearAudioDebugLogs} />
+      )}
       {countdown > 0 ? (
         <div className="countdown" key={countdown}>{countdown}</div>
       ) : (

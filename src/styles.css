@@ -557,6 +557,51 @@ button { cursor: pointer; }
   background: #000;
   user-select: none;
 }
+.audio-debug-panel {
+  position: fixed;
+  top: max(10px, env(safe-area-inset-top));
+  left: max(10px, env(safe-area-inset-left));
+  z-index: 8;
+  width: min(360px, 32vw);
+  max-height: min(72vh, 620px);
+  overflow: hidden;
+  color: #d4d4d8;
+  border: 1px solid #3f3f46;
+  border-radius: 8px;
+  background: rgba(9, 9, 11, .92);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .45);
+  pointer-events: auto;
+}
+.audio-debug-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 6px 4px 10px;
+  color: #f4f4f5;
+  border-bottom: 1px solid #27272a;
+  font-size: 12px;
+}
+.audio-debug-heading .ui-button-icon { width: 28px; height: 28px; }
+.audio-debug-list {
+  max-height: min(66vh, 570px);
+  overflow-y: auto;
+  padding: 6px 8px;
+  overscroll-behavior: contain;
+}
+.audio-debug-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 7px;
+  padding: 2px 0;
+  color: #a1a1aa;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.audio-debug-row time { color: #71717a; font-variant-numeric: tabular-nums; }
+.audio-debug-row span { color: #d4d4d8; }
+.audio-debug-empty { margin: 4px 0; color: #71717a; font-size: 11px; }
 .exam-heading {
   grid-row: 1;
   align-self: end;
@@ -812,6 +857,13 @@ button { cursor: pointer; }
   }
   .schedule-dialog-body { grid-template-columns: 1fr; }
   .clock { border-width: 4px; }
+  .audio-debug-panel {
+    top: max(8px, env(safe-area-inset-top));
+    left: 8px;
+    width: min(360px, calc(100vw - 16px));
+    max-height: 34vh;
+  }
+  .audio-debug-list { max-height: calc(34vh - 38px); }
   .exam-controls {
     right: 8px;
     bottom: 8px;

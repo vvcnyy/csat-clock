@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ExamPage } from "./components/ExamPage";
+import { AudioDebugPanel, type AudioDebugLog } from "./components/AudioDebugPanel";
 import { LandingPage } from "./components/LandingPage";
 import {
   COUNTDOWN_SECONDS,
@@ -41,6 +42,7 @@ const applePlatform =
   /iPhone|iPad|iPod|Mac/i.test(navigator.platform) ||
   (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
 const audioUnlockEnabled = audioUnlockScope === "all" || applePlatform;
+const audioDebugEnabled = import.meta.env.VITE_AUDIO_DEBUG === "true";
 
 const createSilentWavUrl = () => {
   const sampleRate = 8000;
@@ -145,6 +147,18 @@ function App() {
   const [audioUnlockStatus, setAudioUnlockStatus] = useState<AudioUnlockStatus>(
     audioUnlockEnabled ? "required" : "not_required",
   );
+  const [audioDebugLogs, setAudioDebugLogs] = useState<AudioDebugLog[]>([]);
+  const audioDebugSequence = useRef(0);
+  const appendAudioDebugLog = useCallback((message: string) => {
+    const now = new Date();
+    const time = [now.getHours(), now.getMinutes(), now.getSeconds()]
+      .map((part) => String(part).padStart(2, "0"))
+      .join(":");
+    setAudioDebugLogs((logs) => [
+      ...logs,
+      { id: ++audioDebugSequence.current, time, message },
+    ].slice(-160));
+  }, []);
   const previousVirtual = useRef<number | null>(null);
   const playedEvents = useRef(new Set<string>());
   const bellAudio = useRef<HTMLAudioElement | undefined>(undefined);
@@ -283,6 +297,7 @@ function App() {
   ]);
 
   const clearBellPrefetch = useCallback(() => {
+    appendAudioDebugLog("prefetch: clear");
     prefetchGeneration.current += 1;
     pendingBellFetches.current.clear();
     desiredPrefetchIds.current.clear();
@@ -290,9 +305,10 @@ function App() {
       URL.revokeObjectURL(url);
     }
     prefetchedBells.current.clear();
-  }, []);
+  }, [appendAudioDebugLog]);
 
   const stopBell = useCallback(() => {
+    appendAudioDebugLog("bell: cleanup / invalidate");
     bellLifetime.current.invalidate();
     if (bellAudio.current) unloadAudio(bellAudio.current);
     // Release object URLs only after detaching the media source.
@@ -304,7 +320,7 @@ function App() {
       URL.revokeObjectURL(audioUnlockObjectUrl.current);
       audioUnlockObjectUrl.current = undefined;
     }
-  }, []);
+  }, [appendAudioDebugLog]);
 
   const unlockBellAudio = useCallback((): Promise<boolean> => {
     if (!audioUnlockEnabled || audioUnlockStatus === "active") {
@@ -313,6 +329,7 @@ function App() {
     if (audioUnlockPromise.current) return audioUnlockPromise.current;
 
     setAudioUnlockStatus("pending");
+    appendAudioDebugLog(`unlock: attempt scope=${audioUnlockScope === "all" ? "all" : "apple"}`);
     setAudioError("");
     const audio = bellAudio.current ?? new Audio();
     bellAudio.current = audio;
@@ -346,6 +363,7 @@ function App() {
     }
     const pending = Promise.resolve(playResult).then(
       () => {
+        appendAudioDebugLog("unlock: success");
         setAudioUnlockStatus("active");
         setAudioError("");
         trackGoogleAnalyticsEvent("audio_unlock_success", {
@@ -355,6 +373,7 @@ function App() {
         return true;
       },
       (error: unknown) => {
+        appendAudioDebugLog(`unlock: error ${getAudioErrorCode(error, audio.error)} ${error instanceof Error ? error.name : "unknown"}`);
         if (audioUnlockObjectUrl.current === silentUrl) {
           URL.revokeObjectURL(silentUrl);
           audioUnlockObjectUrl.current = undefined;
@@ -376,7 +395,7 @@ function App() {
     });
     audioUnlockPromise.current = pending;
     return pending;
-  }, [audioUnlockStatus, session]);
+  }, [audioUnlockStatus, appendAudioDebugLog, session]);
 
   const getBellFile = useCallback(
     (bell: BellEvent) =>
@@ -419,6 +438,7 @@ function App() {
       }
 
       pendingBellFetches.current.add(bell.id);
+      appendAudioDebugLog(`prefetch: start ${bell.id}/${bell.kind}`);
       const fetchGeneration = prefetchGeneration.current;
       const url = `/sound/${encodeURIComponent(getBellFile(bell))}`;
       const prefetchStartedAt = performance.now();
@@ -433,6 +453,7 @@ function App() {
           if (fetchGeneration !== prefetchGeneration.current) return;
           if (!desiredPrefetchIds.current.has(bell.id)) return;
           prefetchedBells.current.set(bell.id, URL.createObjectURL(blob));
+          appendAudioDebugLog(`prefetch: ready ${bell.id} HTTP ${httpStatus} ${Math.round(performance.now() - prefetchStartedAt)}ms`);
           trackGoogleAnalyticsEvent("audio_prefetch_success", {
             ...analyticsExamDetails(session),
             bell_kind: bell.kind,
@@ -448,6 +469,7 @@ function App() {
           (error: unknown) => {
             if (fetchGeneration !== prefetchGeneration.current) return;
             pendingBellFetches.current.delete(bell.id);
+            appendAudioDebugLog(`prefetch: error ${bell.id} ${httpStatus ?? "-"} ${error instanceof Error ? error.name : "unknown"}`);
             trackGoogleAnalyticsEvent("audio_prefetch_error", {
               ...analyticsExamDetails(session),
               bell_kind: bell.kind,
@@ -465,17 +487,22 @@ function App() {
     session,
     subjectEvents,
     virtualSeconds,
+    appendAudioDebugLog,
   ]);
 
   const playBell = useCallback(
     (bell: BellEvent, expectedAtMs = Date.now()) => {
       if (!session || activeSessionStartedAt.current !== session.startedAt ||
-          session.pausedAt || (session.countdownUntil ?? 0) > Date.now()) return;
+          session.pausedAt || (session.countdownUntil ?? 0) > Date.now()) {
+        appendAudioDebugLog(`bell: blocked ${bell.id} session/paused/countdown`);
+        return;
+      }
       if (audioUnlockEnabled && audioUnlockStatus !== "active") {
         if (audioUnlockStatus !== "pending") setAudioUnlockStatus("required");
         setAudioError(
           "[SND-E01] 예약된 타종 전에 소리를 활성화하지 못했습니다. 타종 소리 활성화 버튼을 눌러 주세요.",
         );
+        appendAudioDebugLog(`bell: blocked ${bell.id} unlock ${audioUnlockStatus}`);
         trackGoogleAnalyticsEvent("audio_unlock_required", {
           ...(session ? analyticsExamDetails(session) : {}),
           bell_kind: bell.kind,
@@ -499,6 +526,7 @@ function App() {
         if (!isCurrent() || errorReported) return;
         errorReported = true;
         const errorCode = getAudioErrorCode(error, audio.error);
+        appendAudioDebugLog(`bell: error ${bell.id} ${errorCode} ${error instanceof Error ? `${error.name}${error.message ? `: ${error.message}` : ""}` : "media"}`);
         if (audioUnlockEnabled && errorCode === "SND-E01") {
           setAudioUnlockStatus("failed");
         }
@@ -528,6 +556,7 @@ function App() {
       audio.onplaying = () => {
         if (!isCurrent() || successReported) return;
         successReported = true;
+        appendAudioDebugLog(`bell: playing ${bell.id} delay=${Math.max(0, Math.round(Date.now() - expectedAtMs))}ms`);
         trackGoogleAnalyticsEvent("audio_play_success", {
           ...(session ? analyticsExamDetails(session) : {}),
           audio_type: "bell",
@@ -539,12 +568,14 @@ function App() {
       };
       audio.onended = () => {
         if (!isCurrent()) return;
+        appendAudioDebugLog(`bell: ended ${bell.id}`);
         stopBell();
         setCurrentBell((current) => (current?.id === bell.id ? null : current));
       };
       audio.load();
       setCurrentBell(bell);
       setAudioError("");
+      appendAudioDebugLog(`bell: play ${bell.id}/${bell.kind} ${prefetchedUrl ? "prefetched" : "direct"}`);
       trackGoogleAnalyticsEvent("audio_play_attempt", {
         ...(session ? analyticsExamDetails(session) : {}),
         audio_type: "bell",
@@ -554,16 +585,20 @@ function App() {
       });
       audio.play().catch((error: unknown) => reportError(error));
     },
-    [audioUnlockStatus, getBellFile, session, stopBell, volume],
+    [appendAudioDebugLog, audioUnlockStatus, getBellFile, session, stopBell, volume],
   );
 
   const playListening = useCallback(async (offsetSeconds = 0) => {
-    if (!englishFile || listeningPlayed.current) return;
+    if (!englishFile || listeningPlayed.current) {
+      appendAudioDebugLog(`listening: blocked file=${Boolean(englishFile)} playing=${listeningPlayed.current}`);
+      return;
+    }
     listeningPlayed.current = true;
     const url = URL.createObjectURL(englishFile);
     const audio = new Audio(url);
     audio.volume = listeningVolume;
     listeningAudio.current = audio;
+    appendAudioDebugLog(`listening: play offset=${Math.floor(offsetSeconds)}s source=${listeningSource.current}`);
     trackGoogleAnalyticsEvent("audio_play_attempt", {
       ...(session ? analyticsExamDetails(session) : {}),
       audio_type: "listening",
@@ -574,6 +609,7 @@ function App() {
     const reportError = (error?: unknown) => {
       if (errorReported) return;
       errorReported = true;
+      appendAudioDebugLog(`listening: error ${getAudioErrorCode(error, audio.error)} ${error instanceof Error ? `${error.name}${error.message ? `: ${error.message}` : ""}` : "media"}`);
       trackGoogleAnalyticsEvent("audio_error", {
         ...(session ? analyticsExamDetails(session) : {}),
         error_code: getAudioErrorCode(error, audio.error),
@@ -600,6 +636,7 @@ function App() {
       audio
         .play()
         .then(() => {
+          appendAudioDebugLog(`listening: playing offset=${Math.floor(offsetSeconds)}s`);
           trackGoogleAnalyticsEvent("audio_play_success", {
             ...(session ? analyticsExamDetails(session) : {}),
             audio_type: "listening",
@@ -622,11 +659,12 @@ function App() {
     if (audio.readyState >= HTMLMediaElement.HAVE_METADATA) startPlayback();
     else audio.onloadedmetadata = startPlayback;
     audio.onended = () => {
+      appendAudioDebugLog("listening: ended");
       URL.revokeObjectURL(url);
       if (listeningAudio.current === audio) listeningAudio.current = undefined;
       listeningWasPlayingBeforePause.current = false;
     };
-  }, [englishFile, listeningVolume, session]);
+  }, [appendAudioDebugLog, englishFile, listeningVolume, session]);
 
   useEffect(() => {
     if (!session || session.pausedAt || countdown > 0) return;
@@ -1166,8 +1204,9 @@ function App() {
 
   if (!session) {
     return (
-      <LandingPage
-        mode={mode}
+      <>
+        <LandingPage
+          mode={mode}
         subjectId={subjectId}
         volume={volume}
         listeningVolume={listeningVolume}
@@ -1210,8 +1249,18 @@ function App() {
         onTestBell={testBell}
         onTestListening={testListening}
         onStart={begin}
-        onUnlockAudio={() => void unlockBellAudio()}
-      />
+          onUnlockAudio={() => void unlockBellAudio()}
+        />
+        {audioDebugEnabled && (
+          <AudioDebugPanel
+            logs={audioDebugLogs}
+            onClear={() => {
+              setAudioDebugLogs([]);
+              appendAudioDebugLog("log: cleared");
+            }}
+          />
+        )}
+      </>
     );
   }
 
@@ -1252,6 +1301,11 @@ function App() {
       }}
       onResumeListening={resumeListeningFromCurrentTime}
       onUnlockAudio={() => void unlockBellAudio()}
+      audioDebugLogs={audioDebugLogs}
+      onClearAudioDebugLogs={() => {
+        setAudioDebugLogs([]);
+        appendAudioDebugLog("log: cleared");
+      }}
     />
   );
 }
