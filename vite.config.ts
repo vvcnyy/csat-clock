@@ -5,6 +5,7 @@ declare const process: { env: Record<string, string | undefined> };
 
 export default defineConfig(({ command }) => {
   const commitSha = process.env.VERCEL_GIT_COMMIT_SHA?.trim();
+  const vercelEnvironment = process.env.VERCEL_ENV?.trim() || "";
   const buildVersion =
     command === "build"
       ? `build-${new Date().toISOString().replace(/[-:TZ.]/g, "").slice(0, 12)}`
@@ -14,6 +15,7 @@ export default defineConfig(({ command }) => {
     plugins: [react()],
     define: {
       __APP_VERSION__: JSON.stringify(commitSha?.slice(0, 7) || buildVersion),
+      __VERCEL_ENV__: JSON.stringify(vercelEnvironment),
     },
   };
 });

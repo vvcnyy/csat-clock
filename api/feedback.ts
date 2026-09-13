@@ -4,6 +4,8 @@ type Request = {
   headers?: Record<string, string | string[] | undefined>;
 };
 
+declare const process: { env: Record<string, string | undefined> };
+
 type Response = {
   status: (code: number) => Response;
   json: (body: unknown) => void;

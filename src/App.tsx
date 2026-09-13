@@ -42,7 +42,9 @@ const applePlatform =
   /iPhone|iPad|iPod|Mac/i.test(navigator.platform) ||
   (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
 const audioUnlockEnabled = audioUnlockScope === "all" || applePlatform;
-const audioDebugEnabled = import.meta.env.VITE_AUDIO_DEBUG === "true";
+const audioDebugEnabled =
+  __VERCEL_ENV__ === "preview" ||
+  (!__VERCEL_ENV__ && import.meta.env.VITE_AUDIO_DEBUG === "true");
 
 const createSilentWavUrl = () => {
   const sampleRate = 8000;
@@ -1302,6 +1304,7 @@ function App() {
       onResumeListening={resumeListeningFromCurrentTime}
       onUnlockAudio={() => void unlockBellAudio()}
       audioDebugLogs={audioDebugLogs}
+      audioDebugEnabled={audioDebugEnabled}
       onClearAudioDebugLogs={() => {
         setAudioDebugLogs([]);
         appendAudioDebugLog("log: cleared");

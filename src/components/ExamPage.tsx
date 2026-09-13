@@ -69,6 +69,7 @@ interface ExamPageProps {
   onResumeListening: () => void;
   onUnlockAudio: () => void;
   audioDebugLogs: AudioDebugLog[];
+  audioDebugEnabled: boolean;
   onClearAudioDebugLogs: () => void;
 }
 
@@ -100,6 +101,7 @@ export function ExamPage({
   onResumeListening,
   onUnlockAudio,
   audioDebugLogs,
+  audioDebugEnabled,
   onClearAudioDebugLogs,
 }: ExamPageProps) {
   const fullscreenSupported = Boolean(document.documentElement.requestFullscreen);
@@ -183,7 +185,7 @@ export function ExamPage({
       onTouchStart={onRevealControls}
       onClick={onRevealControls}
     >
-      {import.meta.env.VITE_AUDIO_DEBUG === "true" && (
+      {audioDebugEnabled && (
         <AudioDebugPanel logs={audioDebugLogs} onClear={onClearAudioDebugLogs} />
       )}
       {countdown > 0 ? (
