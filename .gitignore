@@ -7,3 +7,5 @@ dist/
 *.log
 
 docs/
+vite.config.js
+vite.config.d.ts
