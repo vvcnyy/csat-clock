@@ -6,12 +6,14 @@ import {
   SkipForward,
   Sun,
   TriangleAlert,
+  Volume2,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import AnalogClock from "../AnalogClock";
 import type { ListeningTiming, Session } from "../exam-types";
-import type { BellEvent } from "../schedule";
+import { toSeconds, type BellEvent } from "../schedule";
 import type { WakeLockStatus } from "../useWakeLock";
+import { trackGoogleAnalyticsEvent } from "../google-analytics";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -25,11 +27,14 @@ import {
 } from "./ui/alert-dialog";
 import { Button } from "./ui/button";
 import { Slider } from "./ui/slider";
+import { AudioDebugPanel } from "./AudioDebugPanel";
+import type { AudioDebugLog } from "./AudioDebugPanel";
 
 interface SkipTargets {
   next: number;
   direct: number;
 }
+
 
 interface ExamPageProps {
   session: Session;
@@ -52,6 +57,7 @@ interface ExamPageProps {
   listeningResumeRequired: boolean;
   examCompleted: boolean;
   audioError: string;
+  audioUnlockStatus: "not_required" | "required" | "pending" | "active" | "failed";
   onRevealControls: () => void;
   onSkip: (target: number) => void;
   onTogglePause: () => void;
@@ -59,7 +65,12 @@ interface ExamPageProps {
   onVolumeChange: (volume: number) => void;
   onListeningVolumeChange: (volume: number) => void;
   onExit: () => void;
+  onCompleteReturn: () => void;
   onResumeListening: () => void;
+  onUnlockAudio: () => void;
+  audioDebugLogs: AudioDebugLog[];
+  audioDebugEnabled: boolean;
+  onClearAudioDebugLogs: () => void;
 }
 
 export function ExamPage({
@@ -78,6 +89,7 @@ export function ExamPage({
   listeningResumeRequired,
   examCompleted,
   audioError,
+  audioUnlockStatus,
   onRevealControls,
   onSkip,
   onTogglePause,
@@ -85,7 +97,12 @@ export function ExamPage({
   onVolumeChange,
   onListeningVolumeChange,
   onExit,
+  onCompleteReturn,
   onResumeListening,
+  onUnlockAudio,
+  audioDebugLogs,
+  audioDebugEnabled,
+  onClearAudioDebugLogs,
 }: ExamPageProps) {
   const fullscreenSupported = Boolean(document.documentElement.requestFullscreen);
   const [isFullscreen, setIsFullscreen] = useState(Boolean(document.fullscreenElement));
@@ -97,6 +114,16 @@ export function ExamPage({
       ? `${activeSubject.start.slice(0, 5)} ~ ${activeSubject.end.slice(0, 5)}`
       : "",
   );
+  const examEndSeconds = activeSubject ? toSeconds(activeSubject.end) : null;
+  const secondsUntilEnd = examEndSeconds == null ? null : examEndSeconds - virtualSeconds;
+  const endMarkerMinute =
+    examInProgress &&
+    examEndSeconds != null &&
+    secondsUntilEnd != null &&
+    secondsUntilEnd > 0 &&
+    secondsUntilEnd <= 30 * 60
+      ? Math.floor(examEndSeconds / 60) % 60
+      : null;
 
   useEffect(() => {
     if (currentBell) {
@@ -116,8 +143,18 @@ export function ExamPage({
   }, [activeSubject]);
 
   useEffect(() => {
+    if (document.fullscreenElement) {
+      trackGoogleAnalyticsEvent("fullscreen_enter", {
+        exam_mode: session.mode,
+        fullscreen_action: "initial",
+      });
+    }
     const handleFullscreenChange = () => {
-      setIsFullscreen(Boolean(document.fullscreenElement));
+      const next = Boolean(document.fullscreenElement);
+      setIsFullscreen(next);
+      trackGoogleAnalyticsEvent(next ? "fullscreen_enter" : "fullscreen_exit", {
+        exam_mode: session.mode,
+      });
     };
     document.addEventListener("fullscreenchange", handleFullscreenChange);
     return () => document.removeEventListener("fullscreenchange", handleFullscreenChange);
@@ -125,9 +162,19 @@ export function ExamPage({
 
   const toggleFullscreen = () => {
     if (document.fullscreenElement) {
-      void document.exitFullscreen?.();
+      void document.exitFullscreen?.().catch((error) =>
+        trackGoogleAnalyticsEvent("fullscreen_failed", {
+          fullscreen_action: "exit",
+          error_name: error instanceof Error ? error.name : "unknown",
+        }),
+      );
     } else {
-      void document.documentElement.requestFullscreen?.();
+      void document.documentElement.requestFullscreen?.().catch((error) =>
+        trackGoogleAnalyticsEvent("fullscreen_failed", {
+          fullscreen_action: "enter",
+          error_name: error instanceof Error ? error.name : "unknown",
+        }),
+      );
     }
   };
 
@@ -138,34 +185,34 @@ export function ExamPage({
       onTouchStart={onRevealControls}
       onClick={onRevealControls}
     >
+      {audioDebugEnabled && (
+        <AudioDebugPanel logs={audioDebugLogs} onClear={onClearAudioDebugLogs} />
+      )}
       {countdown > 0 ? (
         <div className="countdown" key={countdown}>{countdown}</div>
       ) : (
         <>
           <header className="exam-heading">
-            <p>{activeSubject?.period ?? "수능 시간표"}</p>
             <h1>{activeSubject?.name ?? "시험 외 시간"}</h1>
+            <div className="bell-status" aria-live="polite">
+              <span
+                className={`status-layer bell-label ${currentBell ? "visible" : ""}`}
+                aria-hidden={!currentBell}
+              >
+                {displayedBellLabel}
+              </span>
+              <span
+                className={`status-layer exam-time ${
+                  !currentBell && examInProgress ? "visible" : ""
+                }`}
+                aria-hidden={Boolean(currentBell) || !examInProgress}
+              >
+                {displayedExamTime}
+              </span>
+            </div>
           </header>
-          <AnalogClock seconds={virtualSeconds} />
-          <div
-            className="bell-status"
-            aria-live="polite"
-          >
-            <span
-              className={`status-layer bell-label ${currentBell ? "visible" : ""}`}
-              aria-hidden={!currentBell}
-            >
-              {displayedBellLabel}
-            </span>
-            <span
-              className={`status-layer exam-time ${
-                !currentBell && examInProgress ? "visible" : ""
-              }`}
-              aria-hidden={Boolean(currentBell) || !examInProgress}
-            >
-              {displayedExamTime}
-            </span>
-          </div>
+          <AnalogClock seconds={virtualSeconds} endMarkerMinute={endMarkerMinute} />
+          <p className="exam-period">{activeSubject?.period ?? "수능 시간표"}</p>
         </>
       )}
 
@@ -246,6 +293,22 @@ export function ExamPage({
           </Button>
         </div>
       )}
+      {(audioUnlockStatus === "required" ||
+        audioUnlockStatus === "pending" ||
+        audioUnlockStatus === "failed") && (
+        <div className="audio-unlock">
+          <Button
+            size="sm"
+            disabled={audioUnlockStatus === "pending"}
+            onClick={onUnlockAudio}
+          >
+            <Volume2 size={14} />
+            {audioUnlockStatus === "pending"
+              ? "타종 소리 활성화 중…"
+              : "타종 소리 활성화"}
+          </Button>
+        </div>
+      )}
       {wakeLockStatus === "unsupported" && (
         <div className="wake-warning">
           <TriangleAlert size={14} />
@@ -256,7 +319,7 @@ export function ExamPage({
       <ExamCompletedDialog
         open={examCompleted}
         subjectName={activeSubject?.name ?? "시험"}
-        onReturn={onExit}
+        onReturn={onCompleteReturn}
       />
     </main>
   );

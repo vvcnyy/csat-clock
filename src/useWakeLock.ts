@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { trackGoogleAnalyticsEvent } from "./google-analytics";
 
 export type WakeLockStatus = "inactive" | "active" | "unsupported" | "failed";
 
 export function useWakeLock(enabled: boolean) {
   const supported = "wakeLock" in navigator;
   const sentinel = useRef<WakeLockSentinel | undefined>(undefined);
+  const unsupportedReported = useRef(false);
   const [status, setStatus] = useState<WakeLockStatus>(
     supported ? "inactive" : "unsupported",
   );
@@ -14,6 +16,10 @@ export function useWakeLock(enabled: boolean) {
     const wakeLock = navigator.wakeLock;
     if (!wakeLock) {
       setStatus("unsupported");
+      if (!unsupportedReported.current) {
+        unsupportedReported.current = true;
+        trackGoogleAnalyticsEvent("wake_lock_unsupported");
+      }
       return;
     }
     if (sentinel.current && !sentinel.current.released) {
@@ -24,18 +30,27 @@ export function useWakeLock(enabled: boolean) {
       const next = await wakeLock.request("screen");
       sentinel.current = next;
       setStatus("active");
+      trackGoogleAnalyticsEvent("wake_lock_success");
       next.addEventListener("release", () => {
         if (sentinel.current === next) {
           sentinel.current = undefined;
           setStatus(enabled ? "inactive" : "inactive");
+          trackGoogleAnalyticsEvent("wake_lock_released");
         }
       });
-    } catch {
+    } catch (error) {
       setStatus("failed");
+      trackGoogleAnalyticsEvent("wake_lock_failed", {
+        error_name: error instanceof Error ? error.name : "unknown",
+      });
     }
   }, [enabled]);
 
   useEffect(() => {
+    if (!supported && !unsupportedReported.current) {
+      unsupportedReported.current = true;
+      trackGoogleAnalyticsEvent("wake_lock_unsupported");
+    }
     if (!enabled) {
       const current = sentinel.current;
       sentinel.current = undefined;

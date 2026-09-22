@@ -17,6 +17,7 @@ import type {
 import { subjects, type SubjectId } from "../schedule";
 import { EbsiListeningDialog } from "./EbsiListeningDialog";
 import { ScheduleInfoDialog } from "./ScheduleInfoDialog";
+import { FeedbackDialog } from "./FeedbackDialog";
 import { Button } from "./ui/button";
 import {
   Card,
@@ -50,6 +51,7 @@ interface LandingPageProps {
   previewing: boolean;
   listeningPreviewing: boolean;
   audioError: string;
+  audioUnlockStatus: "not_required" | "required" | "pending" | "active" | "failed";
   onModeChange: (mode: Mode) => void;
   onSubjectChange: (subject: SubjectId) => void;
   onVolumeChange: (volume: number) => void;
@@ -59,11 +61,12 @@ interface LandingPageProps {
   onCustomDurationChange: (minutes: number) => void;
   onCustomStartModeChange: (mode: CustomStartMode) => void;
   onCustomStartTimeChange: (time: string) => void;
-  onChooseEnglishFile: (file?: File) => void;
+  onChooseEnglishFile: (file?: File, source?: "local" | "ebsi") => void;
   onRemoveEnglishFile: () => void;
   onTestBell: () => void;
   onTestListening: () => void;
   onStart: () => void;
+  onUnlockAudio: () => void;
 }
 
 export function LandingPage({
@@ -80,6 +83,7 @@ export function LandingPage({
   previewing,
   listeningPreviewing,
   audioError,
+  audioUnlockStatus,
   onModeChange,
   onSubjectChange,
   onVolumeChange,
@@ -94,6 +98,7 @@ export function LandingPage({
   onTestBell,
   onTestListening,
   onStart,
+  onUnlockAudio,
 }: LandingPageProps) {
   const englishNeeded =
     mode === "sync" || (mode === "subject" && subjectId === "english");
@@ -286,9 +291,9 @@ export function LandingPage({
                     <label className="file-picker">
                       <input
                         type="file"
-                        accept="audio/*"
+                        accept=".mp3,audio/mpeg,audio/mp3"
                         onChange={(event) =>
-                          onChooseEnglishFile(event.target.files?.[0])
+                          onChooseEnglishFile(event.target.files?.[0], "local")
                         }
                       />
                       <Upload size={16} />
@@ -296,7 +301,7 @@ export function LandingPage({
                     </label>
                     {!englishFile && (
                       <EbsiListeningDialog
-                        onChoose={(file) => onChooseEnglishFile(file)}
+                        onChoose={(file) => onChooseEnglishFile(file, "ebsi")}
                       />
                     )}
                   </div>
@@ -337,6 +342,21 @@ export function LandingPage({
             />
           </div>
           {audioError && <p className="error">{audioError}</p>}
+          {(audioUnlockStatus === "required" ||
+            audioUnlockStatus === "pending" ||
+            audioUnlockStatus === "failed") && (
+            <Button
+              type="button"
+              variant="outline"
+              disabled={audioUnlockStatus === "pending"}
+              onClick={onUnlockAudio}
+            >
+              <Volume2 size={16} />
+              {audioUnlockStatus === "pending"
+                ? "타종 소리 활성화 중…"
+                : "타종 소리 활성화"}
+            </Button>
+          )}
         </CardContent>
 
         <CardFooter>
@@ -346,7 +366,10 @@ export function LandingPage({
         </CardFooter>
       </Card>
 
-      <ScheduleInfoDialog />
+      <div className="landing-links">
+        <ScheduleInfoDialog />
+        <FeedbackDialog />
+      </div>
       <footer className="copyright">
         © 2026 vvcnyy. 개인 학습용 서비스이며, 업로드한 음원의 저작권과
         이용 책임은 사용자에게 있습니다.

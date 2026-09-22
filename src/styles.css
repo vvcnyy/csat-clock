@@ -557,19 +557,57 @@ button { cursor: pointer; }
   background: #000;
   user-select: none;
 }
+.audio-debug-panel {
+  position: fixed;
+  top: max(10px, env(safe-area-inset-top));
+  left: max(10px, env(safe-area-inset-left));
+  z-index: 8;
+  width: min(360px, 32vw);
+  max-height: min(72vh, 620px);
+  overflow: hidden;
+  color: #d4d4d8;
+  border: 1px solid #3f3f46;
+  border-radius: 8px;
+  background: rgba(9, 9, 11, .92);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .45);
+  pointer-events: auto;
+}
+.audio-debug-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 6px 4px 10px;
+  color: #f4f4f5;
+  border-bottom: 1px solid #27272a;
+  font-size: 12px;
+}
+.audio-debug-heading .ui-button-icon { width: 28px; height: 28px; }
+.audio-debug-list {
+  max-height: min(66vh, 570px);
+  overflow-y: auto;
+  padding: 6px 8px;
+  overscroll-behavior: contain;
+}
+.audio-debug-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 7px;
+  padding: 2px 0;
+  color: #a1a1aa;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.audio-debug-row time { color: #71717a; font-variant-numeric: tabular-nums; }
+.audio-debug-row span { color: #d4d4d8; }
+.audio-debug-empty { margin: 4px 0; color: #71717a; font-size: 11px; }
 .exam-heading {
   grid-row: 1;
   align-self: end;
   width: min(92vw, 760px);
-  margin-bottom: clamp(36px, 6vmin, 72px);
+  margin-bottom: clamp(28px, 4.5vmin, 54px);
   text-align: center;
-}
-.exam-heading p {
-  margin: 0 0 6px;
-  color: #71717a;
-  font-size: clamp(18px, 2.4vmin, 26px);
-  font-weight: 500;
-  letter-spacing: .1em;
 }
 .exam-heading h1 {
   margin: 0;
@@ -607,6 +645,15 @@ button { cursor: pointer; }
   transform-origin: 50% 1175%;
   background: #d4d4d8;
 }
+.tick.tick-end {
+  top: 2%;
+  left: calc(50% - 3px);
+  width: 6px;
+  height: 5.5%;
+  transform-origin: 50% 872.727%;
+  background: #ef4444;
+  box-shadow: 0 0 8px rgb(239 68 68 / 80%);
+}
 .clock-number {
   position: absolute;
   color: #e4e4e7;
@@ -636,12 +683,10 @@ button { cursor: pointer; }
   transform: translate(-50%, -50%);
 }
 .bell-status {
-  grid-row: 3;
   position: relative;
-  align-self: start;
-  width: min(92vw, 760px);
+  width: 100%;
   min-height: 42px;
-  margin-top: clamp(36px, 6vmin, 72px);
+  margin-top: 10px;
   text-align: center;
 }
 .bell-status .status-layer {
@@ -664,6 +709,15 @@ button { cursor: pointer; }
   font-variant-numeric: tabular-nums;
   font-weight: 500;
   letter-spacing: .03em;
+}
+.exam-period {
+  grid-row: 3;
+  align-self: start;
+  margin: clamp(36px, 6vmin, 72px) 0 0;
+  color: #71717a;
+  font-size: clamp(26px, 3.6vmin, 38px);
+  font-weight: 500;
+  letter-spacing: .1em;
 }
 .countdown {
   grid-row: 1 / -1;
@@ -733,6 +787,17 @@ button { cursor: pointer; }
   background: rgba(9, 9, 11, .94);
   box-shadow: 0 8px 30px rgba(0, 0, 0, .45);
 }
+.audio-unlock {
+  position: fixed;
+  z-index: 9;
+  right: 16px;
+  bottom: 128px;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: rgba(9, 9, 11, .94);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, .45);
+}
 .wake-warning {
   position: fixed;
   bottom: 16px;
@@ -765,6 +830,51 @@ button { cursor: pointer; }
   font-size: 12px;
   white-space: nowrap;
 }
+.landing-links {
+  display: flex;
+  justify-content: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.feedback-dialog-content { width: min(520px, calc(100vw - 32px)); }
+.feedback-form {
+  display: grid;
+  gap: 18px;
+  padding: 22px 24px 4px;
+}
+.feedback-form label {
+  position: relative;
+  display: grid;
+  gap: 6px;
+  color: var(--muted-foreground);
+  font-size: 13px;
+}
+.feedback-label { color: var(--foreground); font-weight: 500; }
+.feedback-label b { color: #f87171; font-weight: 500; }
+.feedback-form small { margin-left: 4px; color: #71717a; font-size: 11px; font-weight: 400; }
+.feedback-form input,
+.feedback-form textarea {
+  width: 100%;
+  padding: 11px 12px;
+  color: var(--foreground);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  outline: none;
+  background: #09090b;
+  transition: border-color 150ms, box-shadow 150ms;
+  resize: vertical;
+}
+.feedback-form input:focus,
+.feedback-form textarea:focus { border-color: #71717a; box-shadow: 0 0 0 3px rgba(113, 113, 122, .16); }
+.feedback-form textarea { min-height: 142px; line-height: 1.55; }
+.feedback-count { justify-self: end; margin-top: -2px; color: #71717a; font-size: 11px; }
+.feedback-success { margin: -4px 0 0; color: #86efac; font-size: 13px; }
+.feedback-dialog-content > .ui-dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  padding: 14px 24px 22px;
+  border-top: 1px solid var(--border);
+}
 
 @media (max-width: 560px) {
   .landing { place-items: start center; padding: 12px; }
@@ -792,6 +902,13 @@ button { cursor: pointer; }
   }
   .schedule-dialog-body { grid-template-columns: 1fr; }
   .clock { border-width: 4px; }
+  .audio-debug-panel {
+    top: max(8px, env(safe-area-inset-top));
+    left: 8px;
+    width: min(360px, calc(100vw - 16px));
+    max-height: 34vh;
+  }
+  .audio-debug-list { max-height: calc(34vh - 38px); }
   .exam-controls {
     right: 8px;
     bottom: 8px;
@@ -800,6 +917,7 @@ button { cursor: pointer; }
     justify-content: center;
   }
   .listening-resume { right: 8px; bottom: 72px; }
+  .audio-unlock { right: 8px; bottom: 124px; }
   .skip-controls { width: 100%; justify-content: center; }
   .compact-volume { grid-template-columns: 70px; gap: 2px; }
 }
@@ -819,13 +937,9 @@ button { cursor: pointer; }
     grid-column: 1;
     align-self: end;
     width: 100%;
-    margin: 0 0 clamp(12px, 4vh, 24px);
+    margin: 0 0 clamp(12px, 3vh, 20px);
     padding: 0 clamp(16px, 4vw, 48px);
     text-align: center;
-  }
-  .exam-heading p {
-    margin-bottom: 4px;
-    font-size: clamp(13px, 3.8vh, 20px);
   }
   .exam-heading h1 {
     font-size: clamp(28px, 8vh, 48px);
@@ -839,16 +953,20 @@ button { cursor: pointer; }
     margin-block: 48px;
   }
   .bell-status {
-    grid-row: 2;
-    grid-column: 1;
-    align-self: start;
     width: 100%;
     min-height: 34px;
-    margin: clamp(12px, 4vh, 24px) 0 0;
-    padding: 0 clamp(16px, 4vw, 48px);
+    margin-top: 6px;
+    padding: 0;
     text-align: center;
   }
   .bell-status .status-layer {
+    font-size: clamp(20px, 5.8vh, 34px);
+  }
+  .exam-period {
+    grid-row: 2;
+    grid-column: 1;
+    align-self: start;
+    margin: clamp(12px, 4vh, 24px) 0 0;
     font-size: clamp(20px, 5.8vh, 34px);
   }
   .countdown {
@@ -865,6 +983,10 @@ button { cursor: pointer; }
   .listening-resume {
     right: max(8px, env(safe-area-inset-right));
     bottom: max(68px, calc(env(safe-area-inset-bottom) + 68px));
+  }
+  .audio-unlock {
+    right: max(8px, env(safe-area-inset-right));
+    bottom: max(120px, calc(env(safe-area-inset-bottom) + 120px));
   }
   .wake-warning {
     top: max(8px, env(safe-area-inset-top));
