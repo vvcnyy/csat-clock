@@ -14,7 +14,7 @@ import type {
   ListeningTiming,
   Mode,
 } from "../exam-types";
-import { subjects, type SubjectId } from "../schedule";
+import { subjectChoices, type SubjectId } from "../schedule";
 import { EbsiListeningDialog } from "./EbsiListeningDialog";
 import { ScheduleInfoDialog } from "./ScheduleInfoDialog";
 import { FeedbackDialog } from "./FeedbackDialog";
@@ -102,7 +102,7 @@ export function LandingPage({
 }: LandingPageProps) {
   const englishNeeded =
     mode === "sync" || (mode === "subject" && subjectId === "english");
-  const selectedSubject = subjects.find((subject) => subject.id === subjectId);
+  const selectedSubject = subjectChoices.find((subject) => subject.id === subjectId);
   const startLabel =
     mode === "sync"
       ? "시간 동기화 시작"
@@ -180,7 +180,7 @@ export function LandingPage({
                     <SelectValue className="ui-select-value" />
                   </SelectTrigger>
                   <SelectContent>
-                    {subjects.map((subject) => (
+                    {subjectChoices.map((subject) => (
                       <SelectItem value={subject.id} key={subject.id}>
                         {subject.period} · {subject.name}
                       </SelectItem>

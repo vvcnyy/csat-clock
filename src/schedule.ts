@@ -5,6 +5,7 @@ export type SubjectId =
   | "history"
   | "inquiry1"
   | "inquiry2"
+  | "inquiryBoth"
   | "secondLanguage";
 
 export type EventKind =
@@ -43,6 +44,13 @@ export const subjects: Subject[] = [
   { id: "inquiry1", period: "4교시", name: "탐구 1", start: "15:35:00", end: "16:05:00" },
   { id: "inquiry2", period: "4교시", name: "탐구 2", start: "16:07:00", end: "16:37:00" },
   { id: "secondLanguage", period: "5교시", name: "제2외국어/한문", start: "17:05:00", end: "17:45:00" },
+];
+
+export const subjectChoices: Subject[] = [
+  ...subjects.slice(0, 5),
+  subjects[5],
+  { id: "inquiryBoth", period: "4교시", name: "탐구 1·2 연속", start: "15:35:00", end: "16:37:00" },
+  subjects[6],
 ];
 
 const event = (
@@ -157,7 +165,15 @@ export const customEvents = (
 };
 
 export const getSubject = (id: SubjectId) =>
-  subjects.find((subject) => subject.id === id)!;
+  id === "inquiryBoth"
+    ? subjectChoices.find((subject) => subject.id === id)!
+    : subjects.find((subject) => subject.id === id)!;
 
 export const eventsForSubject = (id: SubjectId) =>
-  bellEvents.filter((item) => item.subject === id && !item.syncOnly);
+  bellEvents.filter(
+    (item) =>
+      !item.syncOnly &&
+      (id === "inquiryBoth"
+        ? item.subject === "inquiry1" || item.subject === "inquiry2"
+        : item.subject === id),
+  );

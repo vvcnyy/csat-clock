@@ -44,7 +44,9 @@ export function useExamTimeline(
     end: formatClockTime(customEndSeconds),
   };
   const selectedSubject =
-    session?.mode === "custom" ? customSubject : regularSubject;
+    session?.mode === "custom"
+      ? customSubject
+      : regularSubject;
   const subjectEvents = useMemo(
     () => {
       if (session?.mode === "custom") {
