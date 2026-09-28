@@ -1,0 +1,74 @@
+services:
+  web:
+    build:
+      context: .
+      target: web
+      args:
+        DEPLOY_ENV: ${DEPLOY_ENV:-production}
+        VITE_GA_MEASUREMENT_ID: ${VITE_GA_MEASUREMENT_ID:-}
+        VITE_AUDIO_UNLOCK_SCOPE: ${VITE_AUDIO_UNLOCK_SCOPE:-apple}
+        VITE_SOUND_BASE_URL: ${VITE_SOUND_BASE_URL:-/sound}
+        VITE_AUDIO_DEBUG: ${VITE_AUDIO_DEBUG:-false}
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:-:80}
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
+      - ./logs:/var/log/caddy
+    depends_on:
+      sound-sync:
+        condition: service_completed_successfully
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+  sound-sync:
+    build:
+      context: .
+      target: sound-sync
+    environment:
+      R2_SYNC_ENABLED: ${R2_SYNC_ENABLED:-false}
+      R2_ACCOUNT_ID: ${R2_ACCOUNT_ID:-}
+      R2_BUCKET: ${R2_BUCKET:-}
+      R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID:-}
+      R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY:-}
+      R2_PREFIX: ${R2_PREFIX:-sound}
+      VITE_SOUND_BASE_URL: ${VITE_SOUND_BASE_URL:-/sound}
+    read_only: true
+    init: true
+    restart: "no"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+  api:
+    build:
+      context: .
+      target: api
+    environment:
+      DISCORD_FEEDBACK_WEBHOOK_URL: ${DISCORD_FEEDBACK_WEBHOOK_URL:-}
+    read_only: true
+    init: true
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      start_period: 5s
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  caddy_data:
+  caddy_config:

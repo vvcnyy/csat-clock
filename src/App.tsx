@@ -33,6 +33,7 @@ import {
 } from "./audio-errors";
 import { trackGoogleAnalyticsEvent } from "./google-analytics";
 import { createPlaybackLifetime, unloadAudio } from "./audio-lifecycle";
+import { getSoundUrl } from "./sound-url";
 
 type AudioUnlockStatus = "not_required" | "required" | "pending" | "active" | "failed";
 
@@ -43,8 +44,8 @@ const applePlatform =
   (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
 const audioUnlockEnabled = audioUnlockScope === "all" || applePlatform;
 const audioDebugEnabled =
-  __VERCEL_ENV__ === "preview" ||
-  (!__VERCEL_ENV__ && import.meta.env.VITE_AUDIO_DEBUG === "true");
+  __DEPLOY_ENV__ === "preview" ||
+  (__DEPLOY_ENV__ === "development" && import.meta.env.VITE_AUDIO_DEBUG === "true");
 
 const createSilentWavUrl = () => {
   const sampleRate = 8000;
@@ -442,7 +443,7 @@ function App() {
       pendingBellFetches.current.add(bell.id);
       appendAudioDebugLog(`prefetch: start ${bell.id}/${bell.kind}`);
       const fetchGeneration = prefetchGeneration.current;
-      const url = `/sound/${encodeURIComponent(getBellFile(bell))}`;
+      const url = getSoundUrl(getBellFile(bell));
       const prefetchStartedAt = performance.now();
       let httpStatus: number | undefined;
       void fetch(url)
@@ -514,7 +515,7 @@ function App() {
       }
       const prefetchedUrl = prefetchedBells.current.get(bell.id);
       const url =
-        prefetchedUrl ?? `/sound/${encodeURIComponent(getBellFile(bell))}`;
+        prefetchedUrl ?? getSoundUrl(getBellFile(bell));
       prefetchedBells.current.delete(bell.id);
       const audio = bellAudio.current ?? new Audio();
       bellAudio.current = audio;

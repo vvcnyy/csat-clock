@@ -24,18 +24,26 @@ export default async function handler(req: Request, res: Response) {
   } catch {
     return res.status(400).json({ error: "invalid_json" });
   }
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return res.status(400).json({ error: "invalid_feedback" });
+  }
   const message = typeof payload.message === "string" ? payload.message.trim() : "";
   const contact = typeof payload.contact === "string" ? payload.contact.trim() : "";
   if (!message || message.length > MAX_MESSAGE_LENGTH || contact.length > 200) {
     return res.status(400).json({ error: "invalid_feedback" });
   }
 
-  const content = `📩 수능시계 의견\n${message}${contact ? `\n\n회신 연락처: ${contact}` : ""}`;
+  // Discord content is limited to 2,000 characters; an embed allows the full form.
+  const description = `${message}${contact ? `\n\n회신 연락처: ${contact}` : ""}`;
   try {
     const discordResponse = await fetch(webhook, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ content }),
+      body: JSON.stringify({
+        embeds: [{ title: "수능시계 의견", description }],
+        allowed_mentions: { parse: [] },
+      }),
+      signal: AbortSignal.timeout(8000),
     });
     if (!discordResponse.ok) return res.status(502).json({ error: "discord_rejected" });
     return res.status(204).json({});
