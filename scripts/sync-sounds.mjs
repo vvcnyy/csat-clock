@@ -53,7 +53,7 @@ export async function syncSounds({ client, bucket, prefix, files, log = console.
   return { uploaded, skipped };
 }
 
-async function main() {
+export async function runSoundSync() {
   const config = readSyncConfig(process.env);
   if (!config) {
     console.log("Audio sync disabled; no R2 requests made");
@@ -73,7 +73,7 @@ async function main() {
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  main().catch((error) => {
+  runSoundSync().catch((error) => {
     // Avoid dumping SDK request details or credentials into deployment logs.
     console.error(`Audio sync failed (${error?.name || "Error"}). Check R2 configuration, bucket and permissions.`);
     process.exitCode = 1;

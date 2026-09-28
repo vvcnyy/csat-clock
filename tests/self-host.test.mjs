@@ -2,10 +2,13 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { request } from "node:http";
 import { once } from "node:events";
+import { mkdtempSync, writeFileSync, mkdirSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { createApiServer } from "../server/index.mjs";
 
-async function withServer(t) {
-  const server = createApiServer();
+async function withServer(t, options = {}) {
+  const server = createApiServer(options);
   server.listen(0, "127.0.0.1");
   await once(server, "listening");
   t.after(() => new Promise((resolve) => server.close(resolve)));
@@ -19,6 +22,32 @@ async function withServer(t) {
     req.end(body);
   });
 }
+
+test("static files, cache headers, audio ranges and logs", async (t) => {
+  const dir = mkdtempSync(join(tmpdir(), "csat-static-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  mkdirSync(join(dir, "assets"));
+  mkdirSync(join(dir, "sound"));
+  writeFileSync(join(dir, "index.html"), "<html>clock</html>");
+  writeFileSync(join(dir, "sw.js"), "// worker");
+  writeFileSync(join(dir, "assets/app-123.js"), "// app");
+  writeFileSync(join(dir, "sound/test.mp3"), "0123456789");
+  const logs = [];
+  const call = await withServer(t, { staticDir: dir, onAccess: entry => logs.push(entry) });
+  const home = await call("/");
+  assert.equal(home.status, 200);
+  assert.equal(home.text, "<html>clock</html>");
+  assert.equal(home.headers["cache-control"], "no-cache");
+  assert.equal((await call("/", { method: "HEAD" })).text, "");
+  assert.equal((await call("/sw.js")).headers["cache-control"], "no-store");
+  assert.match((await call("/assets/app-123.js")).headers["cache-control"], /immutable/);
+  assert.equal((await call("/assets/missing.js")).status, 404);
+  const audio = await call("/sound/test.mp3", { headers: { Range: "bytes=0-3" } });
+  assert.equal(audio.status, 206);
+  assert.equal(audio.text, "0123");
+  await call("/?private=not-logged");
+  assert.equal(logs.at(-1).path, "/");
+});
 
 test("self-host API: health, unknown route, method and JSON validation", async (t) => {
   const call = await withServer(t);

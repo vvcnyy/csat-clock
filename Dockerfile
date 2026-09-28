@@ -15,25 +15,16 @@ ENV DEPLOY_ENV=$DEPLOY_ENV \
     VITE_SOUND_BASE_URL=$VITE_SOUND_BASE_URL
 RUN npm run build
 
-FROM node:24-alpine AS api
+FROM node:24-alpine AS runtime
 WORKDIR /app
 ENV NODE_ENV=production PORT=3000
-COPY --chown=node:node package.json ./
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev --ignore-scripts && mkdir -p /app/logs && chown node:node /app/logs
+COPY --from=build --chown=node:node /app/dist ./dist
 COPY --chown=node:node api ./api
 COPY --chown=node:node server ./server
+COPY --chown=node:node scripts ./scripts
+COPY --chown=node:node public/sound ./public/sound
 USER node
 EXPOSE 3000
 CMD ["node", "server/index.mjs"]
-
-FROM node:24-alpine AS sound-sync
-WORKDIR /app
-COPY package.json package-lock.json ./
-RUN npm ci --omit=dev --ignore-scripts
-COPY scripts ./scripts
-COPY public/sound ./public/sound
-USER node
-CMD ["node", "scripts/sync-sounds.mjs"]
-
-FROM caddy:2-alpine AS web
-COPY --from=build /app/dist /srv
-COPY deploy/Caddyfile /etc/caddy/Caddyfile
