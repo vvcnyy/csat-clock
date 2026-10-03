@@ -9,3 +9,5 @@ dist/
 docs/
 vite.config.js
 vite.config.d.ts
+.env
+logs/

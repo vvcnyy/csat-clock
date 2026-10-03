@@ -14,7 +14,7 @@ import type {
   ListeningTiming,
   Mode,
 } from "../exam-types";
-import { subjectChoices, type SubjectId } from "../schedule";
+import { scheduleSubjectChoices, subjectChoices, type SubjectId } from "../schedule";
 import { EbsiListeningDialog } from "./EbsiListeningDialog";
 import { ScheduleInfoDialog } from "./ScheduleInfoDialog";
 import { FeedbackDialog } from "./FeedbackDialog";
@@ -39,6 +39,10 @@ import { Slider } from "./ui/slider";
 
 interface LandingPageProps {
   mode: Mode;
+  syncWithCurrentTime: boolean;
+  scheduleStartBell: string;
+  onSyncWithCurrentTimeChange: (value: boolean) => void;
+  onScheduleStartBellChange: (value: string) => void;
   subjectId: SubjectId;
   volume: number;
   listeningVolume: number;
@@ -71,6 +75,10 @@ interface LandingPageProps {
 
 export function LandingPage({
   mode,
+  syncWithCurrentTime,
+  scheduleStartBell,
+  onSyncWithCurrentTimeChange,
+  onScheduleStartBellChange,
   subjectId,
   volume,
   listeningVolume,
@@ -105,7 +113,7 @@ export function LandingPage({
   const selectedSubject = subjectChoices.find((subject) => subject.id === subjectId);
   const startLabel =
     mode === "sync"
-      ? "시간 동기화 시작"
+      ? "전체 시간표 시작"
       : mode === "subject"
         ? `${selectedSubject?.name ?? "과목"} 시험 시작`
         : `${customDurationMinutes || 0}분 시험 시작`;
@@ -138,7 +146,7 @@ export function LandingPage({
                 aria-selected={mode === "sync"}
               >
                 <Clock3 size={17} />
-                <span>시간 동기화</span>
+                <span>전체 시간표</span>
               </button>
               <button
                 className={`mode-tab ${mode === "subject" ? "active" : ""}`}
@@ -161,12 +169,46 @@ export function LandingPage({
             </div>
             <p className="mode-description">
               {mode === "sync"
-                ? "현재 시각을 기준으로 전체 수능 시간표와 타종을 재현합니다."
+                ? "전체 수능 시간표와 타종을 순서대로 진행합니다."
                 : mode === "subject"
                   ? "원하는 수능 과목 하나를 실제 시험 시간과 타종으로 응시합니다."
                   : "시험 시간을 직접 정합니다."}
             </p>
           </div>
+
+          {mode === "sync" && (
+            <div className="subject-settings">
+              <div className="field">
+                <span className="field-label">시간 모드</span>
+                <div className="mode-grid" role="group" aria-label="시간 모드">
+                  {[true, false].map((enabled) => (
+                    <button key={String(enabled)} type="button"
+                      className={`mode-option compact ${syncWithCurrentTime === enabled ? "active" : ""}`}
+                      aria-pressed={syncWithCurrentTime === enabled}
+                      onClick={() => onSyncWithCurrentTimeChange(enabled)}>
+                      {enabled ? "현재 시간과 동기화" : "처음부터 시작"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {!syncWithCurrentTime && (
+                <div className="field">
+                  <span className="field-label">시작할 과목</span>
+                  <Select value={scheduleStartBell} onValueChange={onScheduleStartBellChange}>
+                    <SelectTrigger aria-label="시작할 과목"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {scheduleSubjectChoices.map(({ period, name, bell }) => (
+                        <SelectItem key={bell.id} value={bell.id}>
+                          {period} · {name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="field-help">선택한 과목의 첫 타종부터 순서대로 진행합니다. 시험 종료 시 전체 진행 상황이 초기화됩니다.</p>
+                </div>
+              )}
+            </div>
+          )}
 
           {mode === "subject" && (
             <div className="subject-settings">

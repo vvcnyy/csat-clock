@@ -6,6 +6,8 @@ export type CustomStartMode = "now" | "specific";
 
 export interface Session {
   mode: Mode;
+  syncWithCurrentTime?: boolean;
+  scheduleStartSeconds?: number;
   subjectId?: SubjectId;
   startedAt: number;
   countdownUntil?: number;

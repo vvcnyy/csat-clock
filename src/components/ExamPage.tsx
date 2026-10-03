@@ -225,7 +225,9 @@ export function ExamPage({
       >
         {skipTargets && (
           <div className="skip-controls">
-            <Button variant="outline" size="sm" onClick={() => onSkip(skipTargets.next)}>
+            <Button variant="outline" size="sm"
+              disabled={session.mode === "sync" && Boolean(session.pausedAt)}
+              onClick={() => onSkip(skipTargets.next)}>
               <SkipForward size={15} />
               다음 타종
             </Button>
@@ -246,7 +248,7 @@ export function ExamPage({
           </div>
         )}
 
-        {session.mode !== "sync" && (
+        {(session.mode !== "sync" || session.syncWithCurrentTime === false) && (
           <Button variant="outline" size="sm" onClick={onTogglePause}>
             {session.pausedAt ? "계속하기" : "일시정지"}
           </Button>
@@ -271,7 +273,7 @@ export function ExamPage({
             onChange={onListeningVolumeChange}
           />
         )}
-        <ExitExamDialog onExit={onExit} />
+        <ExitExamDialog onExit={onExit} resetFullSchedule={session.mode === "sync" && session.syncWithCurrentTime === false} />
       </div>
 
       {session.pausedAt && (
@@ -348,7 +350,7 @@ function ExamVolume({
   );
 }
 
-function ExitExamDialog({ onExit }: { onExit: () => void }) {
+function ExitExamDialog({ onExit, resetFullSchedule }: { onExit: () => void; resetFullSchedule: boolean }) {
   return (
     <AlertDialog>
       <AlertDialogTrigger asChild>
@@ -359,6 +361,7 @@ function ExitExamDialog({ onExit }: { onExit: () => void }) {
           <AlertDialogTitle>시험을 종료할까요?</AlertDialogTitle>
           <AlertDialogDescription>
             현재 진행 상태가 삭제되고 시작 화면으로 돌아갑니다.
+            {resetFullSchedule && " 전체 시험 진행 상황이 초기화되며, 종료 후에는 이어서 응시할 수 없습니다."}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>

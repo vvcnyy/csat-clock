@@ -6,6 +6,7 @@ import {
 } from "./audio-errors";
 import { trackGoogleAnalyticsEvent } from "./google-analytics";
 import { bellEvents } from "./schedule";
+import { getSoundUrl } from "./sound-url";
 
 interface AudioPreviewOptions {
   bellVolume: number;
@@ -66,7 +67,7 @@ export function useAudioPreviews({
       return;
     }
     const sample = bellEvents.find((event) => event.kind === "preliminary")!;
-    const audio = new Audio(`/sound/${encodeURIComponent(sample.file)}`);
+    const audio = new Audio(getSoundUrl(sample.file));
     audio.volume = bellVolume;
     bellAudio.current = audio;
     setPreviewing(true);
