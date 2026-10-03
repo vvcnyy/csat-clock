@@ -105,6 +105,13 @@ export const bellEvents: BellEvent[] = [
   event("037", "17:45", "secondLanguage", "end", "종료령 · 시험장 종료", "037_second_language_end_final.mp3", false, "037_second_language_end_final_short.mp3"),
 ];
 
+// Each subject starts with its first announcement, including entry bells.
+export const scheduleSubjectChoices = subjects.map((subject) => ({
+    period: subject.period,
+    name: subject.name,
+    bell: bellEvents.find((bell) => bell.subject === subject.id)!,
+  }));
+
 export const toSeconds = (time: string) => {
   const [hour, minute, second] = time.split(":").map(Number);
   return hour * 3600 + minute * 60 + second;

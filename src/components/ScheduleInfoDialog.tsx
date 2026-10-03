@@ -39,7 +39,7 @@ export function ScheduleInfoDialog() {
         <DialogHeader>
           <DialogTitle>수능 시간표 및 타종</DialogTitle>
           <DialogDescription>
-            현재 시각 동기화 모드에서 아래 시각에 맞춰 시험과 타종이 진행됩니다.
+            전체 시간표 모드에서 아래 시각에 맞춰 시험과 타종이 진행됩니다.
           </DialogDescription>
         </DialogHeader>
         <div className="schedule-dialog-body">

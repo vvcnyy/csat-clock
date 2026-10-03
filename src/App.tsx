@@ -108,6 +108,8 @@ function App() {
     }
   >(SETTINGS_KEY);
   const [mode, setMode] = useState<Mode>("sync");
+  const [syncWithCurrentTime, setSyncWithCurrentTime] = useState(true);
+  const [scheduleStartBell, setScheduleStartBell] = useState(bellEvents[0].id);
   const [subjectId, setSubjectId] = useState<SubjectId>("korean");
   const [volume, setVolume] = useState(savedSettings?.volume ?? 0.8);
   const [listeningVolume, setListeningVolume] = useState(
@@ -418,7 +420,8 @@ function App() {
     const nextBells = candidates
       .filter(
         (bell) =>
-          getBellSeconds(bell) >= virtualSeconds &&
+          // Keep a just-due bell until the playback effect consumes its Blob.
+          getBellSeconds(bell) >= virtualSeconds - 5 &&
           !playedEvents.current.has(bell.id),
       )
       .slice(0, 2);
@@ -674,13 +677,15 @@ function App() {
 
     const candidates = session.mode === "sync" ? bellEvents : subjectEvents;
     const firstEventSeconds =
-      session.startAtMainBell && session.mode === "subject"
+      session.mode === "sync" && session.syncWithCurrentTime === false
+        ? session.scheduleStartSeconds ?? getBellSeconds(bellEvents[0])
+        : session.startAtMainBell && session.mode === "subject"
         ? toSeconds(selectedSubject.start)
         : candidates[0]
           ? getBellSeconds(candidates[0])
           : toSeconds(selectedSubject.start);
     const delayUntil = (targetSeconds: number) => {
-      if (session.mode === "sync") {
+      if (session.mode === "sync" && session.syncWithCurrentTime !== false) {
         const now = new Date();
         const target = new Date(now);
         target.setHours(
@@ -727,9 +732,10 @@ function App() {
           void playListening();
         }, delay));
       } else if (
-        session.mode === "subject" &&
-        session.startAtMainBell &&
-        virtualSeconds >= listeningAt
+        ((session.mode === "subject" && session.startAtMainBell) ||
+          (session.mode === "sync" && session.syncWithCurrentTime === false)) &&
+        virtualSeconds >= listeningAt &&
+        virtualSeconds < toSeconds("14:20:00")
       ) {
         void playListening(virtualSeconds - listeningAt);
       }
@@ -788,7 +794,7 @@ function App() {
   useEffect(() => {
     if (!session || countdown > 0 || session.pausedAt) {
       previousVirtual.current =
-        session?.mode !== "sync" && countdown > 0
+        (session?.mode !== "sync" || session.syncWithCurrentTime === false) && countdown > 0
           ? virtualSeconds - 1
           : virtualSeconds;
       return;
@@ -944,10 +950,14 @@ function App() {
     activeSessionStartedAt.current = startedAt;
     setSession({
       mode,
+      syncWithCurrentTime: mode === "sync" ? syncWithCurrentTime : undefined,
+      scheduleStartSeconds: mode === "sync" && !syncWithCurrentTime
+        ? getBellSeconds(bellEvents.find((bell) => bell.id === scheduleStartBell) ?? bellEvents[0])
+        : undefined,
       subjectId: mode === "subject" ? subjectId : undefined,
       startedAt,
       countdownUntil:
-        mode !== "sync" ? startedAt + COUNTDOWN_SECONDS * 1000 : undefined,
+        mode !== "sync" || !syncWithCurrentTime ? startedAt + COUNTDOWN_SECONDS * 1000 : undefined,
       pausedTotal: 0,
       volume,
       listeningVolume,
@@ -990,7 +1000,7 @@ function App() {
   };
 
   const togglePause = () => {
-    if (!session || session.mode === "sync") return;
+    if (!session || (session.mode === "sync" && session.syncWithCurrentTime !== false)) return;
     trackGoogleAnalyticsEvent(session.pausedAt ? "exam_resume" : "exam_pause", {
       ...analyticsExamDetails(session),
       pause_seconds: session.pausedAt
@@ -1027,17 +1037,29 @@ function App() {
   };
 
   const skipTo = (targetSeconds: number) => {
-    if (!session || session.mode !== "subject") return;
-    const firstEvent = toSeconds(subjectEvents[0]?.at ?? selectedSubject.start);
+    if (!session || (session.mode !== "subject" && !(session.mode === "sync" && session.syncWithCurrentTime === false))) return;
+    if (targetSeconds <= virtualSeconds) return;
+    // Do not change the existing metadata/play pipeline while it is loading.
+    // The user can skip once the current listening source is ready.
+    if (session.mode === "sync" && listeningAudio.current &&
+        (listeningAudio.current.readyState < 1 || !Number.isFinite(listeningAudio.current.duration))) {
+      setAudioError("영어 듣기 음원을 준비 중입니다. 잠시 후 다음 타종으로 이동해 주세요.");
+      return;
+    }
+    const candidates = session.mode === "sync" ? bellEvents : subjectEvents;
+    if (!candidates.some((bell) => getBellSeconds(bell) === targetSeconds) && session.mode === "sync") return;
+    const firstEvent = session.mode === "sync"
+      ? session.scheduleStartSeconds ?? getBellSeconds(bellEvents[0])
+      : session.startAtMainBell ? toSeconds(selectedSubject.start) : toSeconds(subjectEvents[0]?.at ?? selectedSubject.start);
     const clockMs = session.pausedAt ?? Date.now();
     const targetElapsed = Math.max(0, targetSeconds - firstEvent) * 1000;
-    const targetBell = subjectEvents.find(
+    const targetBell = candidates.find(
       (bell) => getBellSeconds(bell) === targetSeconds,
     );
     trackGoogleAnalyticsEvent("exam_skip", {
       ...analyticsExamDetails(session),
       skip_type:
-        skipTargets && targetSeconds === skipTargets.direct
+        session.mode === "subject" && skipTargets && targetSeconds === skipTargets.direct
           ? "direct"
           : "next_bell",
       target_kind: targetBell?.kind ?? "exam_start",
@@ -1046,7 +1068,7 @@ function App() {
     stopBell();
     setCurrentBell(null);
     setExamCompleted(false);
-    for (const bell of subjectEvents) {
+    for (const bell of candidates) {
       if (getBellSeconds(bell) < targetSeconds) playedEvents.current.add(bell.id);
     }
     previousVirtual.current = targetSeconds - 1;
@@ -1054,12 +1076,35 @@ function App() {
     const listeningAt = toSeconds(
       listeningTiming === "before" ? "13:07:00" : "13:10:00",
     );
+    if (session.mode === "sync" && targetSeconds >= toSeconds("14:20:00")) {
+      listeningAudio.current?.pause();
+      listeningPlayed.current = true;
+      listeningWasPlayingBeforePause.current = false;
+      setListeningResumeRequired(false);
+    }
     if (
-      session.subjectId === "english" &&
+      (session.subjectId === "english" || session.mode === "sync") &&
       targetSeconds >= listeningAt &&
-      !listeningPlayed.current
+      targetSeconds < toSeconds("14:20:00")
     ) {
-      void playListening(Math.max(0, targetSeconds - listeningAt));
+      const offset = Math.max(0, targetSeconds - listeningAt);
+      const audio = listeningAudio.current;
+      if (audio && audio.readyState >= 1 && Number.isFinite(audio.duration)) {
+        try {
+          if (offset >= audio.duration) {
+            audio.pause();
+            listeningPlayed.current = true;
+            setListeningResumeRequired(false);
+          } else {
+            audio.currentTime = offset;
+          }
+        } catch (error) {
+          setAudioError(formatAudioError("영어 듣기", error, audio.error));
+          setListeningResumeRequired(true);
+        }
+      } else if (!listeningPlayed.current) {
+        void playListening(offset);
+      }
     }
 
     setSession((current) =>
@@ -1107,7 +1152,7 @@ function App() {
   useEffect(() => {
     if (
       !session ||
-      session.mode === "sync" ||
+      (session.mode === "sync" && session.syncWithCurrentTime !== false) ||
       session.pausedAt ||
       countdown > 0 ||
       virtualSeconds < examEndSeconds
@@ -1210,6 +1255,10 @@ function App() {
       <>
         <LandingPage
           mode={mode}
+          syncWithCurrentTime={syncWithCurrentTime}
+          scheduleStartBell={scheduleStartBell}
+          onSyncWithCurrentTimeChange={setSyncWithCurrentTime}
+          onScheduleStartBellChange={setScheduleStartBell}
         subjectId={subjectId}
         volume={volume}
         listeningVolume={listeningVolume}

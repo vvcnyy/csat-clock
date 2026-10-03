@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { COUNTDOWN_SECONDS, secondsNow, type ListeningTiming, type Session } from "./exam-types";
 import {
   customEvents,
+  bellEvents,
   eventsForSubject,
   formatClockTime,
   getBellSeconds,
@@ -70,9 +71,11 @@ export function useExamTimeline(
     : 0;
 
   const virtualSeconds = useMemo(() => {
-    if (!session || session.mode === "sync") return secondsNow();
+    if (!session || (session.mode === "sync" && session.syncWithCurrentTime !== false)) return secondsNow();
     const firstEvent =
-      session.startAtMainBell && session.mode === "subject"
+      session.mode === "sync"
+        ? session.scheduleStartSeconds ?? getBellSeconds(bellEvents[0])
+        : session.startAtMainBell && session.mode === "subject"
         ? toSeconds(selectedSubject.start)
         : subjectEvents[0]
           ? getBellSeconds(subjectEvents[0])
@@ -101,11 +104,15 @@ export function useExamTimeline(
   }, [selectedSubject, session, virtualSeconds]);
 
   const examStartSeconds =
-    session?.mode === "custom"
+    session?.mode === "sync"
+      ? session.scheduleStartSeconds ?? getBellSeconds(bellEvents[0])
+      : session?.mode === "custom"
       ? customStartSeconds
       : toSeconds(selectedSubject.start);
   const examEndSeconds =
-    session?.mode === "custom"
+    session?.mode === "sync"
+      ? toSeconds(subjects[subjects.length - 1].end)
+      : session?.mode === "custom"
       ? customEndSeconds
       : toSeconds(selectedSubject.end);
   const examInProgress = Boolean(
@@ -121,6 +128,10 @@ export function useExamTimeline(
   );
 
   const skipTargets = useMemo(() => {
+    if (session?.mode === "sync" && session.syncWithCurrentTime === false) {
+      const next = bellEvents.map(getBellSeconds).find((at) => at > virtualSeconds);
+      return next === undefined ? null : { next, direct: next };
+    }
     if (!session || session.mode !== "subject") return null;
     const start = toSeconds(selectedSubject.start);
     const listeningAt = toSeconds(
