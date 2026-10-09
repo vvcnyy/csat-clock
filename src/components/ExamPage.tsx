@@ -1,4 +1,5 @@
 import {
+  BookmarkPlus,
   FastForward,
   Maximize,
   Minimize,
@@ -11,7 +12,7 @@ import {
 import { useEffect, useState } from "react";
 import AnalogClock from "../AnalogClock";
 import type { ListeningTiming, Session } from "../exam-types";
-import { toSeconds, type BellEvent } from "../schedule";
+import { formatClockTime, toSeconds, type BellEvent } from "../schedule";
 import type { WakeLockStatus } from "../useWakeLock";
 import { trackGoogleAnalyticsEvent } from "../google-analytics";
 import {
@@ -26,9 +27,11 @@ import {
   AlertDialogTrigger,
 } from "./ui/alert-dialog";
 import { Button } from "./ui/button";
+import { Badge } from "./ui/badge";
 import { Slider } from "./ui/slider";
 import { AudioDebugPanel } from "./AudioDebugPanel";
 import type { AudioDebugLog } from "./AudioDebugPanel";
+import { ExamCompletedDialog } from "./ExamCompletedDialog";
 
 interface SkipTargets {
   next: number;
@@ -56,6 +59,10 @@ interface ExamPageProps {
   listeningVolume: number;
   listeningResumeRequired: boolean;
   examCompleted: boolean;
+  examStartSeconds: number;
+  examEndSeconds: number;
+  selectedSubject: { name: string; period: string; start: string; end: string };
+  onAddBookmark: () => void;
   audioError: string;
   audioUnlockStatus: "not_required" | "required" | "pending" | "active" | "failed";
   onRevealControls: () => void;
@@ -88,6 +95,10 @@ export function ExamPage({
   listeningVolume,
   listeningResumeRequired,
   examCompleted,
+  examStartSeconds: summaryStartSeconds,
+  examEndSeconds: summaryEndSeconds,
+  selectedSubject,
+  onAddBookmark,
   audioError,
   audioUnlockStatus,
   onRevealControls,
@@ -104,6 +115,8 @@ export function ExamPage({
   audioDebugEnabled,
   onClearAudioDebugLogs,
 }: ExamPageProps) {
+  const bookmarks = session.bookmarks ?? [];
+  const [bookmarkNotice, setBookmarkNotice] = useState("");
   const fullscreenSupported = Boolean(document.documentElement.requestFullscreen);
   const [isFullscreen, setIsFullscreen] = useState(Boolean(document.fullscreenElement));
   const [displayedBellLabel, setDisplayedBellLabel] = useState(
@@ -124,6 +137,12 @@ export function ExamPage({
     secondsUntilEnd <= 30 * 60
       ? Math.floor(examEndSeconds / 60) % 60
       : null;
+
+  useEffect(() => {
+    if (!bookmarkNotice) return;
+    const timer = window.setTimeout(() => setBookmarkNotice(""), 2400);
+    return () => window.clearTimeout(timer);
+  }, [bookmarkNotice]);
 
   useEffect(() => {
     if (currentBell) {
@@ -211,7 +230,7 @@ export function ExamPage({
               </span>
             </div>
           </header>
-          <AnalogClock seconds={virtualSeconds} endMarkerMinute={endMarkerMinute} />
+          <AnalogClock seconds={virtualSeconds} endMarkerMinute={endMarkerMinute} bookmarks={bookmarks} />
           <p className="exam-period">{activeSubject?.period ?? "수능 시간표"}</p>
         </>
       )}
@@ -248,6 +267,25 @@ export function ExamPage({
           </div>
         )}
 
+        {countdown === 0 && !examCompleted && (
+          <>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={!examInProgress || Boolean(session.pausedAt)}
+              onClick={() => {
+                onAddBookmark();
+                setBookmarkNotice(`북마크 ${bookmarks.length + 1} 저장 · ${formatClockTime(virtualSeconds)}`);
+              }}
+            >
+              <BookmarkPlus size={15} />
+              북마크
+              {bookmarks.length > 0 && <Badge variant="secondary" className="bookmark-count">{bookmarks.length}</Badge>}
+            </Button>
+            <p className="bookmark-notice" role="status">{bookmarkNotice}</p>
+          </>
+        )}
+
         {(session.mode !== "sync" || session.syncWithCurrentTime === false) && (
           <Button variant="outline" size="sm" onClick={onTogglePause}>
             {session.pausedAt ? "계속하기" : "일시정지"}
@@ -276,7 +314,7 @@ export function ExamPage({
         <ExitExamDialog onExit={onExit} resetFullSchedule={session.mode === "sync" && session.syncWithCurrentTime === false} />
       </div>
 
-      {session.pausedAt && (
+      {session.pausedAt && !examCompleted && (
         <div className="paused">
           <div className="paused-content">
             <span>일시정지</span>
@@ -320,7 +358,10 @@ export function ExamPage({
       {audioError && <div className="exam-error">{audioError}</div>}
       <ExamCompletedDialog
         open={examCompleted}
-        subjectName={activeSubject?.name ?? "시험"}
+        session={session}
+        selectedSubject={selectedSubject}
+        examStartSeconds={summaryStartSeconds}
+        examEndSeconds={summaryEndSeconds}
         onReturn={onCompleteReturn}
       />
     </main>
@@ -360,41 +401,13 @@ function ExitExamDialog({ onExit, resetFullSchedule }: { onExit: () => void; res
         <AlertDialogHeader>
           <AlertDialogTitle>시험을 종료할까요?</AlertDialogTitle>
           <AlertDialogDescription>
-            현재 진행 상태가 삭제되고 시작 화면으로 돌아갑니다.
-            {resetFullSchedule && " 전체 시험 진행 상황이 초기화되며, 종료 후에는 이어서 응시할 수 없습니다."}
+            응시를 마치고 종료 화면으로 이동합니다.
+            {resetFullSchedule && " 전체 시험 응시가 종료되며, 이후에는 이어서 응시할 수 없습니다."}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel>계속 응시</AlertDialogCancel>
           <AlertDialogAction onClick={onExit}>시험 종료</AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
-  );
-}
-
-function ExamCompletedDialog({
-  open,
-  subjectName,
-  onReturn,
-}: {
-  open: boolean;
-  subjectName: string;
-  onReturn: () => void;
-}) {
-  return (
-    <AlertDialog open={open}>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>시험이 종료되었습니다</AlertDialogTitle>
-          <AlertDialogDescription>
-            {subjectName} 시험이 모두 끝났습니다. 5분 후 시작 화면으로 자동 이동합니다.
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogAction onClick={onReturn}>
-            시작 화면으로 돌아가기
-          </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
