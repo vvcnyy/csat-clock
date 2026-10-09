@@ -235,22 +235,6 @@ export function ExamPage({
         </>
       )}
 
-      {countdown === 0 && !examCompleted && (
-        <div className="bookmark-control">
-          <Button
-            variant="outline"
-            disabled={!examInProgress || Boolean(session.pausedAt)}
-            onClick={() => {
-              onAddBookmark();
-              setBookmarkNotice(`북마크 ${bookmarks.length + 1} 저장 · ${formatClockTime(virtualSeconds)}`);
-            }}
-          >
-            <BookmarkPlus size={16} />북마크{bookmarks.length > 0 && <Badge variant="secondary" className="bookmark-count">{bookmarks.length}</Badge>}
-          </Button>
-          <p className="bookmark-notice" role="status">{bookmarkNotice}</p>
-        </div>
-      )}
-
       <div
         className={`exam-controls ${
           (controlsVisible || Boolean(session.pausedAt)) && countdown === 0
@@ -281,6 +265,25 @@ export function ExamPage({
               </Button>
             )}
           </div>
+        )}
+
+        {countdown === 0 && !examCompleted && (
+          <>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={!examInProgress || Boolean(session.pausedAt)}
+              onClick={() => {
+                onAddBookmark();
+                setBookmarkNotice(`북마크 ${bookmarks.length + 1} 저장 · ${formatClockTime(virtualSeconds)}`);
+              }}
+            >
+              <BookmarkPlus size={15} />
+              북마크
+              {bookmarks.length > 0 && <Badge variant="secondary" className="bookmark-count">{bookmarks.length}</Badge>}
+            </Button>
+            <p className="bookmark-notice" role="status">{bookmarkNotice}</p>
+          </>
         )}
 
         {(session.mode !== "sync" || session.syncWithCurrentTime === false) && (

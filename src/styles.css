@@ -243,7 +243,40 @@ button { cursor: pointer; }
 .field-label { display: block; margin-bottom: 8px; font-size: 13px; font-weight: 500; }
 .field-help { margin: 8px 0 0; color: var(--muted-foreground); font-size: 12px; line-height: 1.5; }
 .mode-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.ui-tabs-list.mode-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); width: 100%; }
+.mode-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #09090b;
+}
+.mode-tab {
+  display: flex;
+  height: 48px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 0 8px;
+  color: var(--muted-foreground);
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.mode-tab:hover { color: var(--foreground); background: #141417; }
+.mode-tab.active {
+  color: var(--foreground);
+  background: var(--muted);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .45);
+}
+.mode-tab:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
+}
 .mode-description {
   min-height: 36px;
   margin: 10px 2px 0;
@@ -619,7 +652,7 @@ button { cursor: pointer; }
   height: 5.5%;
   transform-origin: 50% 872.727%;
   background: #ef4444;
-
+  box-shadow: 0 0 8px rgb(239 68 68 / 80%);
 }
 .clock-number {
   position: absolute;
@@ -703,6 +736,8 @@ button { cursor: pointer; }
   right: 16px;
   bottom: 16px;
   display: flex;
+  max-width: calc(100% - 32px);
+  flex-wrap: wrap;
   gap: 8px;
   align-items: center;
   padding: 8px;
@@ -851,7 +886,12 @@ button { cursor: pointer; }
   .ui-card-content { padding: 0 18px 2px; }
   .ui-card-footer { padding: 14px 18px 18px; }
   .mode-grid { grid-template-columns: 1fr; }
-  .mode-tabs .ui-tabs-trigger { padding-inline: 6px; font-size: 12px; }
+  .mode-tab {
+    height: 46px;
+    flex-direction: column;
+    gap: 3px;
+    font-size: 11px;
+  }
   .english-settings .mode-grid { grid-template-columns: 1fr 1fr; }
   .ebsi-filters { grid-template-columns: 1fr 1fr; }
   .ebsi-filters > label:first-child { grid-column: 1 / -1; }
@@ -876,6 +916,7 @@ button { cursor: pointer; }
     right: 8px;
     bottom: 8px;
     left: 8px;
+    max-width: none;
     flex-wrap: wrap;
     justify-content: center;
   }
@@ -940,6 +981,7 @@ button { cursor: pointer; }
     right: max(8px, env(safe-area-inset-right));
     bottom: max(8px, env(safe-area-inset-bottom));
     left: max(8px, env(safe-area-inset-left));
+    max-width: none;
     flex-wrap: wrap;
     justify-content: center;
   }
@@ -995,46 +1037,30 @@ button { cursor: pointer; }
 .ui-separator { flex-shrink: 0; background: var(--border); }
 .ui-separator[data-orientation="horizontal"] { width: 100%; height: 1px; }
 .ui-separator[data-orientation="vertical"] { width: 1px; height: 100%; }
-.ui-tabs-list { display: inline-flex; align-items: center; height: 40px; padding: 4px; border-radius: 8px; background: var(--muted); color: var(--muted-foreground); }
-.ui-tabs-trigger { display: inline-flex; align-items: center; justify-content: center; height: 32px; padding: 0 12px; border: 0; border-radius: 5px; background: transparent; color: var(--muted-foreground); font-size: 13px; font-weight: 500; white-space: nowrap; }
-.ui-tabs-trigger[data-state="active"] { background: var(--background); color: var(--foreground); box-shadow: 0 1px 2px rgb(0 0 0 / 15%); }
-.ui-tabs-trigger:focus-visible, .ui-tabs-content:focus-visible, .ui-input:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
-.ui-tabs-trigger:disabled, .ui-input:disabled { opacity: .5; pointer-events: none; }
-.ui-input { display: flex; width: 100%; height: 40px; padding: 0 12px; border: 1px solid var(--border); border-radius: 6px; background: transparent; color: var(--foreground); font-size: 14px; }
-.ui-input::placeholder { color: var(--muted-foreground); }
-.subject-settings, .custom-settings { padding: 0; border: 0; border-radius: 0; background: transparent; }
-.english-settings { padding: 20px 0 0; border: 0; border-top: 1px solid var(--border); border-radius: 0; background: transparent; }
 
-.bookmark-control {
-  position: fixed;
-  z-index: 7;
-  top: max(16px, env(safe-area-inset-top));
-  right: max(16px, env(safe-area-inset-right));
-  display: grid;
-  justify-items: end;
-  gap: 8px;
-}
-.bookmark-control .ui-button { background: var(--background); }
 .bookmark-count { min-width: 20px; padding: 0 5px; font-size: 11px; font-variant-numeric: tabular-nums; }
-.bookmark-notice { min-height: 18px; margin: 0; color: var(--muted-foreground); font-size: 12px; }
+.bookmark-notice {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  right: 0;
+  max-width: 100%;
+  margin: 0;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--background);
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+.bookmark-notice:empty { display: none; }
 .clock-bookmark {
   position: absolute;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 1px;
-  z-index: 2;
-  min-width: 22px;
-  height: 22px;
-  padding: 0 4px;
-  border: 2px solid var(--background);
-  border-radius: 4px;
-  background: var(--primary);
-  color: var(--primary-foreground);
-  font: 500 11px Arial, sans-serif;
+  width: clamp(4px, 1vmin, 7px);
+  height: clamp(4px, 1vmin, 7px);
+  border-radius: 50%;
+  background: #93c5fd;
   transform: translate(-50%, -50%);
 }
-.clock-bookmark sup { font-size: 8px; line-height: 1; align-self: flex-start; margin-top: 4px; }
 .ui-alert-dialog-content.exam-completed-dialog {
   --summary-gap: clamp(0.75rem, 2vmin, 1.5rem);
   --summary-padding: clamp(0.75rem, 3vmin, 2rem);
@@ -1103,14 +1129,6 @@ button { cursor: pointer; }
 .exam-summary-clock .minute { left: calc(50% - var(--summary-minute-width) / 2); width: var(--summary-minute-width); }
 .exam-summary-clock .second { width: clamp(1px, calc(var(--summary-dial) * .004), 2px); }
 .exam-summary-clock .clock-pin { width: clamp(6px, calc(var(--summary-dial) * .025), 14px); height: clamp(6px, calc(var(--summary-dial) * .025), 14px); }
-.exam-summary-clock .clock-bookmark {
-  min-width: clamp(10px, calc(var(--summary-dial) * .045), 22px);
-  height: clamp(10px, calc(var(--summary-dial) * .045), 22px);
-  padding: 0 2px;
-  border-width: 1px;
-  font-size: clamp(8px, calc(var(--summary-dial) * .025), 11px);
-}
-.exam-summary-clock .clock-bookmark sup { margin-top: 2px; font-size: 7px; }
 .summary-clock-time { display: flex; flex-wrap: wrap; justify-content: center; align-items: baseline; gap: 0.5rem; margin: 0; font-size: clamp(.875rem, 1.5vw, 1.125rem); font-variant-numeric: tabular-nums; }
 .summary-clock-time > span { color: var(--muted-foreground); font-size: .75rem; }
 .exam-summary-details { display: flex; flex-direction: column; justify-content: center; gap: var(--summary-gap); min-width: 0; min-height: 0; }

@@ -51,18 +51,17 @@ export default function AnalogClock({ seconds, endMarkerMinute, bookmarks = [] }
       <span className="hand minute" style={{ transform: `rotate(${minute * 6}deg)` }} />
       <span className="hand second" style={{ transform: `rotate(${second * 6}deg)` }} />
       <span className="clock-pin" />
-      {Array.from(bookmarkGroups, ([minute, group], index) => {
+      {Array.from(bookmarkGroups, ([minute, group]) => {
         const angle = (minute / 60) * 2 * Math.PI;
-        const radius = index % 2 === 0 ? 46 : 54;
+        const radius = 52;
         return (
           <span
             className="clock-bookmark"
             key={minute}
+            aria-hidden="true"
             title={group.map(({ bookmark, number }) => `북마크 ${number} · ${bookmark.subjectName} · ${formatClockTime(bookmark.clockSeconds)}`).join("\n")}
             style={{ left: `${50 + radius * Math.sin(angle)}%`, top: `${50 - radius * Math.cos(angle)}%` }}
-          >
-            {group[0].number}{group.length > 1 && <sup>+{group.length - 1}</sup>}
-          </span>
+          />
         );
       })}
     </div>

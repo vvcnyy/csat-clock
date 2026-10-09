@@ -1,6 +1,9 @@
 import {
+  BookOpenCheck,
+  Clock3,
   Pause,
   Play,
+  TimerReset,
   Upload,
   Volume2,
   VolumeX,
@@ -33,8 +36,6 @@ import {
   SelectValue,
 } from "./ui/select";
 import { Slider } from "./ui/slider";
-import { Input } from "./ui/input";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 
 interface LandingPageProps {
   mode: Mode;
@@ -135,222 +136,243 @@ export function LandingPage({
         </CardHeader>
 
         <CardContent>
-          <Tabs value={mode} onValueChange={(value) => onModeChange(value as Mode)}>
-            <div className="field">
-              <span className="field-label">응시 방식</span>
-              <TabsList className="mode-tabs" aria-label="응시 방식">
-                <TabsTrigger value="sync">전체 시간표</TabsTrigger>
-                <TabsTrigger value="subject">과목 선택</TabsTrigger>
-                <TabsTrigger value="custom">자유 설정</TabsTrigger>
-              </TabsList>
-              <p className="mode-description">
-                {mode === "sync"
-                  ? "전체 수능 시간표와 타종을 순서대로 진행합니다."
-                  : mode === "subject"
-                    ? "원하는 수능 과목 하나를 실제 시험 시간과 타종으로 응시합니다."
-                    : "시험 시간을 직접 정합니다."}
-              </p>
+          <div className="field">
+            <span className="field-label">응시 방식</span>
+            <div className="mode-tabs" role="tablist" aria-label="응시 방식">
+              <button
+                className={`mode-tab ${mode === "sync" ? "active" : ""}`}
+                onClick={() => onModeChange("sync")}
+                role="tab"
+                aria-selected={mode === "sync"}
+              >
+                <Clock3 size={17} />
+                <span>전체 시간표</span>
+              </button>
+              <button
+                className={`mode-tab ${mode === "subject" ? "active" : ""}`}
+                onClick={() => onModeChange("subject")}
+                role="tab"
+                aria-selected={mode === "subject"}
+              >
+                <BookOpenCheck size={17} />
+                <span>과목 선택</span>
+              </button>
+              <button
+                className={`mode-tab ${mode === "custom" ? "active" : ""}`}
+                onClick={() => onModeChange("custom")}
+                role="tab"
+                aria-selected={mode === "custom"}
+              >
+                <TimerReset size={17} />
+                <span>자유 설정</span>
+              </button>
             </div>
+            <p className="mode-description">
+              {mode === "sync"
+                ? "전체 수능 시간표와 타종을 순서대로 진행합니다."
+                : mode === "subject"
+                  ? "원하는 수능 과목 하나를 실제 시험 시간과 타종으로 응시합니다."
+                  : "시험 시간을 직접 정합니다."}
+            </p>
+          </div>
 
-            {mode === "sync" && (
-              <TabsContent value="sync" className="subject-settings">
-                <div className="field">
-                  <span className="field-label">시간 모드</span>
-                  <div className="mode-grid" role="group" aria-label="시간 모드">
-                    {[true, false].map((enabled) => (
-                      <button key={String(enabled)} type="button"
-                        className={`mode-option compact ${syncWithCurrentTime === enabled ? "active" : ""}`}
-                        aria-pressed={syncWithCurrentTime === enabled}
-                        onClick={() => onSyncWithCurrentTimeChange(enabled)}>
-                        {enabled ? "현재 시간과 동기화" : "처음부터 시작"}
-                      </button>
-                    ))}
-                  </div>
+          {mode === "sync" && (
+            <div className="subject-settings">
+              <div className="field">
+                <span className="field-label">시간 모드</span>
+                <div className="mode-grid" role="group" aria-label="시간 모드">
+                  {[true, false].map((enabled) => (
+                    <button key={String(enabled)} type="button"
+                      className={`mode-option compact ${syncWithCurrentTime === enabled ? "active" : ""}`}
+                      aria-pressed={syncWithCurrentTime === enabled}
+                      onClick={() => onSyncWithCurrentTimeChange(enabled)}>
+                      {enabled ? "현재 시간과 동기화" : "처음부터 시작"}
+                    </button>
+                  ))}
                 </div>
-                {!syncWithCurrentTime && (
-                  <div className="field">
-                    <span className="field-label">시작할 과목</span>
-                    <Select value={scheduleStartBell} onValueChange={onScheduleStartBellChange}>
-                      <SelectTrigger aria-label="시작할 과목"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        {scheduleSubjectChoices.map(({ period, name, bell }) => (
-                          <SelectItem key={bell.id} value={bell.id}>
-                            {period} · {name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <p className="field-help">선택한 과목의 첫 타종부터 순서대로 진행합니다. 시험 종료 시 전체 진행 상황이 초기화됩니다.</p>
-                  </div>
-                )}
-              </TabsContent>
-            )}
-
-            {mode === "subject" && (
-              <TabsContent value="subject" className="subject-settings">
+              </div>
+              {!syncWithCurrentTime && (
                 <div className="field">
-                  <span className="field-label">응시 과목</span>
-                  <Select
-                    value={subjectId}
-                    onValueChange={(value) => onSubjectChange(value as SubjectId)}
-                  >
-                    <SelectTrigger aria-label="응시 과목">
-                      <SelectValue className="ui-select-value" />
-                    </SelectTrigger>
+                  <span className="field-label">시작할 과목</span>
+                  <Select value={scheduleStartBell} onValueChange={onScheduleStartBellChange}>
+                    <SelectTrigger aria-label="시작할 과목"><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      {subjectChoices.map((subject) => (
-                        <SelectItem value={subject.id} key={subject.id}>
-                          {subject.period} · {subject.name}
+                      {scheduleSubjectChoices.map(({ period, name, bell }) => (
+                        <SelectItem key={bell.id} value={bell.id}>
+                          {period} · {name}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
+                  <p className="field-help">선택한 과목의 첫 타종부터 순서대로 진행합니다. 시험 종료 시 전체 진행 상황이 초기화됩니다.</p>
                 </div>
-                <label className="checkbox-setting" htmlFor="start-at-main-bell">
-                  <Checkbox
-                    id="start-at-main-bell"
-                    checked={startAtMainBell}
-                    onCheckedChange={(checked) =>
-                      onStartAtMainBellChange(checked === true)
+              )}
+            </div>
+          )}
+
+          {mode === "subject" && (
+            <div className="subject-settings">
+              <div className="field">
+                <span className="field-label">응시 과목</span>
+                <Select
+                  value={subjectId}
+                  onValueChange={(value) => onSubjectChange(value as SubjectId)}
+                >
+                  <SelectTrigger aria-label="응시 과목">
+                    <SelectValue className="ui-select-value" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {subjectChoices.map((subject) => (
+                      <SelectItem value={subject.id} key={subject.id}>
+                        {subject.period} · {subject.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <label className="checkbox-setting" htmlFor="start-at-main-bell">
+                <Checkbox
+                  id="start-at-main-bell"
+                  checked={startAtMainBell}
+                  onCheckedChange={(checked) =>
+                    onStartAtMainBellChange(checked === true)
+                  }
+                />
+                <span>
+                  <strong>바로 본령으로 시작</strong>
+                  <small>예비령과 준비령을 건너뛰고 시험 시작 시각부터 진행합니다.</small>
+                </span>
+              </label>
+            </div>
+          )}
+
+          {mode === "custom" && (
+            <div className="custom-settings">
+              <div className="field">
+                <label className="field-label" htmlFor="custom-duration">
+                  시험 시간
+                </label>
+                <div className="duration-input">
+                  <input
+                    id="custom-duration"
+                    type="number"
+                    min="1"
+                    step="1"
+                    inputMode="numeric"
+                    value={customDurationMinutes}
+                    onChange={(event) =>
+                      onCustomDurationChange(Number(event.target.value))
                     }
                   />
-                  <span>
-                    <strong>바로 본령으로 시작</strong>
-                    <small>예비령과 준비령을 건너뛰고 시험 시작 시각부터 진행합니다.</small>
-                  </span>
-                </label>
-              </TabsContent>
-            )}
-
-            {mode === "custom" && (
-              <TabsContent value="custom" className="custom-settings">
-                <div className="field">
-                  <label className="field-label" htmlFor="custom-duration">
-                    시험 시간
-                  </label>
-                  <div className="duration-input">
-                    <Input
-                      id="custom-duration"
-                      type="number"
-                      min="1"
-                      step="1"
-                      inputMode="numeric"
-                      value={customDurationMinutes}
-                      onChange={(event) =>
-                        onCustomDurationChange(Number(event.target.value))
-                      }
-                    />
-                    <span>분</span>
-                  </div>
-                  <p className="field-help">
-                    15분 이상 설정하면 종료 10분 전 타종이 추가됩니다.
-                  </p>
+                  <span>분</span>
                 </div>
-                <div className="field custom-start-field">
-                  <span className="field-label">시계 시작 시각</span>
-                  <div className="mode-grid">
-                    <button
-                      className={`mode-option compact ${
-                        customStartMode === "now" ? "active" : ""
-                      }`}
-                      onClick={() => onCustomStartModeChange("now")}
-                    >
-                      현재 시각부터
-                    </button>
-                    <button
-                      className={`mode-option compact ${
-                        customStartMode === "specific" ? "active" : ""
-                      }`}
-                      onClick={() => onCustomStartModeChange("specific")}
-                    >
-                      특정 시각부터
-                    </button>
-                  </div>
-                  {customStartMode === "specific" && (
-                    <Input
-                      className="time-input"
-                      type="time"
-                      value={customStartTime}
-                      onChange={(event) => onCustomStartTimeChange(event.target.value)}
-                      aria-label="시계 시작 시각"
-                    />
-                  )}
+                <p className="field-help">
+                  15분 이상 설정하면 종료 10분 전 타종이 추가됩니다.
+                </p>
+              </div>
+              <div className="field custom-start-field">
+                <span className="field-label">시계 시작 시각</span>
+                <div className="mode-grid">
+                  <button
+                    className={`mode-option compact ${
+                      customStartMode === "now" ? "active" : ""
+                    }`}
+                    onClick={() => onCustomStartModeChange("now")}
+                  >
+                    현재 시각부터
+                  </button>
+                  <button
+                    className={`mode-option compact ${
+                      customStartMode === "specific" ? "active" : ""
+                    }`}
+                    onClick={() => onCustomStartModeChange("specific")}
+                  >
+                    특정 시각부터
+                  </button>
                 </div>
-              </TabsContent>
-            )}
-
-            {englishNeeded && (
-              <div className="english-settings">
-                <div className="field">
-                  <span className="field-label">영어 듣기 시작</span>
-                  <div className="mode-grid">
-                    <button
-                      className={`mode-option compact ${listeningTiming === "before" ? "active" : ""}`}
-                      onClick={() => onListeningTimingChange("before")}
-                    >
-                      시험 3분 전
-                    </button>
-                    <button
-                      className={`mode-option compact ${listeningTiming === "start" ? "active" : ""}`}
-                      onClick={() => onListeningTimingChange("start")}
-                    >
-                      시험 시작 시
-                    </button>
-                  </div>
-                </div>
-                <div className="field english-file-field">
-                  <span className="field-label">영어 듣기 음원</span>
-                  <div className="file-row">
-                    <div
-                      className={`file-source-buttons ${
-                        englishFile ? "selected" : ""
-                      }`}
-                    >
-                      <label className="file-picker">
-                        <input
-                          type="file"
-                          accept=".mp3,audio/mpeg,audio/mp3"
-                          onChange={(event) =>
-                            onChooseEnglishFile(event.target.files?.[0], "local")
-                          }
-                        />
-                        <Upload size={16} />
-                        <span>{englishFile?.name ?? "내 파일 불러오기"}</span>
-                      </label>
-                      {!englishFile && (
-                        <EbsiListeningDialog
-                          onChoose={(file) => onChooseEnglishFile(file, "ebsi")}
-                        />
-                      )}
-                    </div>
-                    {englishFile && (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="icon"
-                        aria-label="듣기 파일 선택 해제"
-                        title="파일 선택 해제"
-                        onClick={onRemoveEnglishFile}
-                      >
-                        <X size={16} />
-                      </Button>
-                    )}
-                  </div>
-                </div>
-                <div className="listening-volume">
-                  <VolumeControl
-                    label="영어 듣기 음량"
-                    value={listeningVolume}
-                    onChange={onListeningVolumeChange}
-                    onTest={onTestListening}
-                    testing={listeningPreviewing}
-                    testDisabled={!englishFile}
+                {customStartMode === "specific" && (
+                  <input
+                    className="time-input"
+                    type="time"
+                    value={customStartTime}
+                    onChange={(event) => onCustomStartTimeChange(event.target.value)}
+                    aria-label="시계 시작 시각"
                   />
+                )}
+              </div>
+            </div>
+          )}
+
+          {englishNeeded && (
+            <div className="english-settings">
+              <div className="field">
+                <span className="field-label">영어 듣기 시작</span>
+                <div className="mode-grid">
+                  <button
+                    className={`mode-option compact ${listeningTiming === "before" ? "active" : ""}`}
+                    onClick={() => onListeningTimingChange("before")}
+                  >
+                    시험 3분 전
+                  </button>
+                  <button
+                    className={`mode-option compact ${listeningTiming === "start" ? "active" : ""}`}
+                    onClick={() => onListeningTimingChange("start")}
+                  >
+                    시험 시작 시
+                  </button>
                 </div>
               </div>
-            )}
-
-          </Tabs>
+              <div className="field english-file-field">
+                <span className="field-label">영어 듣기 음원</span>
+                <div className="file-row">
+                  <div
+                    className={`file-source-buttons ${
+                      englishFile ? "selected" : ""
+                    }`}
+                  >
+                    <label className="file-picker">
+                      <input
+                        type="file"
+                        accept=".mp3,audio/mpeg,audio/mp3"
+                        onChange={(event) =>
+                          onChooseEnglishFile(event.target.files?.[0], "local")
+                        }
+                      />
+                      <Upload size={16} />
+                      <span>{englishFile?.name ?? "내 파일 불러오기"}</span>
+                    </label>
+                    {!englishFile && (
+                      <EbsiListeningDialog
+                        onChoose={(file) => onChooseEnglishFile(file, "ebsi")}
+                      />
+                    )}
+                  </div>
+                  {englishFile && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      aria-label="듣기 파일 선택 해제"
+                      title="파일 선택 해제"
+                      onClick={onRemoveEnglishFile}
+                    >
+                      <X size={16} />
+                    </Button>
+                  )}
+                </div>
+              </div>
+              <div className="listening-volume">
+                <VolumeControl
+                  label="영어 듣기 음량"
+                  value={listeningVolume}
+                  onChange={onListeningVolumeChange}
+                  onTest={onTestListening}
+                  testing={listeningPreviewing}
+                  testDisabled={!englishFile}
+                />
+              </div>
+            </div>
+          )}
 
           <div className="field volume-field">
             <VolumeControl
