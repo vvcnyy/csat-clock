@@ -1,30 +1,16 @@
-FROM node:24-alpine AS build
+FROM node:22-alpine AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
 COPY . .
-ARG DEPLOY_ENV=production
-ARG VITE_GA_MEASUREMENT_ID
-ARG VITE_AUDIO_UNLOCK_SCOPE=apple
-ARG VITE_AUDIO_DEBUG=false
-ARG VITE_SOUND_BASE_URL=/sound
-ENV DEPLOY_ENV=$DEPLOY_ENV \
-    VITE_GA_MEASUREMENT_ID=$VITE_GA_MEASUREMENT_ID \
-    VITE_AUDIO_UNLOCK_SCOPE=$VITE_AUDIO_UNLOCK_SCOPE \
-    VITE_AUDIO_DEBUG=$VITE_AUDIO_DEBUG \
-    VITE_SOUND_BASE_URL=$VITE_SOUND_BASE_URL
 RUN npm run build
 
-FROM node:24-alpine AS runtime
+FROM node:22-alpine
+ENV NODE_ENV=production PORT=3000 TRUST_PROXY=true
 WORKDIR /app
-ENV NODE_ENV=production PORT=3000
-COPY package.json package-lock.json ./
-RUN npm ci --omit=dev --ignore-scripts && mkdir -p /app/logs && chown node:node /app/logs
 COPY --from=build --chown=node:node /app/dist ./dist
-COPY --chown=node:node api ./api
-COPY --chown=node:node server ./server
-COPY --chown=node:node scripts ./scripts
-COPY --chown=node:node public/sound ./public/sound
+COPY --chown=node:node server.mjs ./server.mjs
 USER node
 EXPOSE 3000
-CMD ["node", "server/index.mjs"]
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 CMD wget -q -O /dev/null http://127.0.0.1:${PORT}/health || exit 1
+CMD ["node", "server.mjs"]
