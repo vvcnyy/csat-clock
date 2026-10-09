@@ -4,7 +4,6 @@ import { AudioDebugPanel, type AudioDebugLog } from "./components/AudioDebugPane
 import { LandingPage } from "./components/LandingPage";
 import {
   COUNTDOWN_SECONDS,
-  EXAM_COMPLETION_DELAY_SECONDS,
   readJson,
   secondsNow,
   SESSION_KEY,
@@ -34,6 +33,7 @@ import {
 import { trackGoogleAnalyticsEvent } from "./google-analytics";
 import { createPlaybackLifetime, unloadAudio } from "./audio-lifecycle";
 import { getSoundUrl } from "./sound-url";
+import { createExamCompletion, getSessionTiming } from "./exam-summary";
 
 type AudioUnlockStatus = "not_required" | "required" | "pending" | "active" | "failed";
 
@@ -132,8 +132,8 @@ function App() {
   );
   const [englishFile, setEnglishFile] = useState<File>();
   const [session, setSession] = useState<Session | null>(() => readJson<Session>(SESSION_KEY));
-  const wakeLock = useWakeLock(Boolean(session));
-  useMediaSessionGuard(Boolean(session));
+  const wakeLock = useWakeLock(Boolean(session && !session.completion));
+  useMediaSessionGuard(Boolean(session && !session.completion));
   const {
     activeSubject,
     countdown,
@@ -147,7 +147,7 @@ function App() {
   } = useExamTimeline(session, subjectId, listeningTiming);
   const [currentBell, setCurrentBell] = useState<BellEvent | null>(null);
   const [controlsVisible, setControlsVisible] = useState(false);
-  const [examCompleted, setExamCompleted] = useState(false);
+  const examCompleted = Boolean(session?.completion);
   const [audioError, setAudioError] = useState("");
   const [audioUnlockStatus, setAudioUnlockStatus] = useState<AudioUnlockStatus>(
     audioUnlockEnabled ? "required" : "not_required",
@@ -327,6 +327,15 @@ function App() {
     }
   }, [appendAudioDebugLog]);
 
+  const stopListening = useCallback(() => {
+    const audio = listeningAudio.current;
+    if (!audio) return;
+    const source = audio.getAttribute("src");
+    unloadAudio(audio);
+    if (source?.startsWith("blob:")) URL.revokeObjectURL(source);
+    listeningAudio.current = undefined;
+  }, []);
+
   const unlockBellAudio = useCallback((): Promise<boolean> => {
     if (!audioUnlockEnabled || audioUnlockStatus === "active") {
       return Promise.resolve(true);
@@ -411,7 +420,7 @@ function App() {
   );
 
   useEffect(() => {
-    if (!session) {
+    if (!session || session.completion) {
       clearBellPrefetch();
       return;
     }
@@ -499,7 +508,7 @@ function App() {
   const playBell = useCallback(
     (bell: BellEvent, expectedAtMs = Date.now()) => {
       if (!session || activeSessionStartedAt.current !== session.startedAt ||
-          session.pausedAt || (session.countdownUntil ?? 0) > Date.now()) {
+          session.completion || session.pausedAt || (session.countdownUntil ?? 0) > Date.now()) {
         appendAudioDebugLog(`bell: blocked ${bell.id} session/paused/countdown`);
         return;
       }
@@ -595,7 +604,7 @@ function App() {
   );
 
   const playListening = useCallback(async (offsetSeconds = 0) => {
-    if (!englishFile || listeningPlayed.current) {
+    if (!session || session.completion || !englishFile || listeningPlayed.current) {
       appendAudioDebugLog(`listening: blocked file=${Boolean(englishFile)} playing=${listeningPlayed.current}`);
       return;
     }
@@ -673,7 +682,7 @@ function App() {
   }, [appendAudioDebugLog, englishFile, listeningVolume, session]);
 
   useEffect(() => {
-    if (!session || session.pausedAt || countdown > 0) return;
+    if (!session || session.completion || session.pausedAt || countdown > 0) return;
 
     const candidates = session.mode === "sync" ? bellEvents : subjectEvents;
     const firstEventSeconds =
@@ -760,6 +769,7 @@ function App() {
       !restoredOnLoad.current ||
       listeningResumeChecked.current ||
       !session ||
+      session.completion ||
       !englishFile ||
       countdown > 0 ||
       session.pausedAt
@@ -792,7 +802,7 @@ function App() {
   ]);
 
   useEffect(() => {
-    if (!session || countdown > 0 || session.pausedAt) {
+    if (!session || session.completion || countdown > 0 || session.pausedAt) {
       previousVirtual.current =
         (session?.mode !== "sync" || session.syncWithCurrentTime === false) && countdown > 0
           ? virtualSeconds - 1
@@ -835,7 +845,7 @@ function App() {
     const handleVisibility = () => {
       if (
         document.visibilityState !== "visible" ||
-        session.pausedAt ||
+        session.completion || session.pausedAt ||
         !listeningAudio.current ||
         listeningAudio.current.ended
       ) {
@@ -925,7 +935,6 @@ function App() {
     listeningResumeChecked.current = true;
     previousVirtual.current = null;
     setCurrentBell(null);
-    setExamCompleted(false);
     setAudioError("");
     completedTrackedSession.current = undefined;
     beganTrackedSession.current = undefined;
@@ -956,6 +965,8 @@ function App() {
         : undefined,
       subjectId: mode === "subject" ? subjectId : undefined,
       startedAt,
+      actualStartedAt: startedAt + (mode !== "sync" || !syncWithCurrentTime ? COUNTDOWN_SECONDS * 1000 : 0),
+      bookmarks: [],
       countdownUntil:
         mode !== "sync" || !syncWithCurrentTime ? startedAt + COUNTDOWN_SECONDS * 1000 : undefined,
       pausedTotal: 0,
@@ -1000,7 +1011,7 @@ function App() {
   };
 
   const togglePause = () => {
-    if (!session || (session.mode === "sync" && session.syncWithCurrentTime !== false)) return;
+    if (!session || session.completion || (session.mode === "sync" && session.syncWithCurrentTime !== false)) return;
     trackGoogleAnalyticsEvent(session.pausedAt ? "exam_resume" : "exam_pause", {
       ...analyticsExamDetails(session),
       pause_seconds: session.pausedAt
@@ -1037,7 +1048,7 @@ function App() {
   };
 
   const skipTo = (targetSeconds: number) => {
-    if (!session || (session.mode !== "subject" && !(session.mode === "sync" && session.syncWithCurrentTime === false))) return;
+    if (!session || session.completion || (session.mode !== "subject" && !(session.mode === "sync" && session.syncWithCurrentTime === false))) return;
     if (targetSeconds <= virtualSeconds) return;
     // Do not change the existing metadata/play pipeline while it is loading.
     // The user can skip once the current listening source is ready.
@@ -1067,7 +1078,6 @@ function App() {
 
     stopBell();
     setCurrentBell(null);
-    setExamCompleted(false);
     for (const bell of candidates) {
       if (getBellSeconds(bell) < targetSeconds) playedEvents.current.add(bell.id);
     }
@@ -1112,6 +1122,7 @@ function App() {
         ? {
             ...current,
             countdownUntil: undefined,
+            actualStartedAt: current.actualStartedAt ?? current.startedAt + COUNTDOWN_SECONDS * 1000,
             startedAt:
               clockMs -
               current.pausedTotal -
@@ -1149,47 +1160,46 @@ function App() {
     document.exitFullscreen?.().catch(() => undefined);
   }, [clearBellPrefetch, examCompleted, examEndSeconds, examStartSeconds, session, stopBell, stopBellPreview, stopListeningPreview, virtualSeconds]);
 
-  useEffect(() => {
-    if (
-      !session ||
-      (session.mode === "sync" && session.syncWithCurrentTime !== false) ||
-      session.pausedAt ||
-      countdown > 0 ||
-      virtualSeconds < examEndSeconds
-    ) {
-      return;
-    }
+  const addBookmark = () => {
+    if (!session || session.completion || countdown > 0 || session.pausedAt || !examInProgress || !activeSubject) return;
+    const bookmark = {
+      id: crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      clockSeconds: virtualSeconds,
+      subjectName: activeSubject.name,
+      period: activeSubject.period,
+      examElapsedSeconds: Math.max(0, virtualSeconds - toSeconds(activeSubject.start)),
+      elapsedSeconds: getSessionTiming(session, Date.now()).elapsedSeconds,
+    };
+    setSession((current) => current && !current.completion
+      ? { ...current, bookmarks: [...(current.bookmarks ?? []), bookmark] }
+      : current);
+  };
 
-    setExamCompleted(true);
-    setControlsVisible(true);
+  const finishExam = () => {
+    if (!session || session.completion) return;
+    stopBell();
+    stopListening();
+    setListeningResumeRequired(false);
+    setSession((current) => current && !current.completion
+      ? { ...current, completion: createExamCompletion(current, Date.now(), virtualSeconds, examEndSeconds, "manual") }
+      : current);
+  };
+
+  useEffect(() => {
+    if (!session || session.completion || session.pausedAt || countdown > 0 || virtualSeconds < examEndSeconds) return;
+
+    const completion = createExamCompletion(session, Date.now(), virtualSeconds, examEndSeconds, "finished");
+    setSession((current) => current && !current.completion ? { ...current, completion } : current);
+    stopListening();
+    setListeningResumeRequired(false);
     if (completedTrackedSession.current !== session.startedAt) {
       completedTrackedSession.current = session.startedAt;
       trackGoogleAnalyticsEvent("exam_complete", {
         ...analyticsExamDetails(session),
-        elapsed_seconds: Math.max(
-          0,
-          Math.round((Date.now() - session.startedAt - session.pausedTotal) / 1000),
-        ),
+        elapsed_seconds: getSessionTiming({ ...session, completion }, completion.endedAt).elapsedSeconds,
       });
     }
-
-    const secondsUntilHome =
-      examEndSeconds + EXAM_COMPLETION_DELAY_SECONDS - virtualSeconds;
-    if (secondsUntilHome <= 0) {
-      trackGoogleAnalyticsEvent("completion_auto_return", analyticsExamDetails(session));
-      exitExam("auto_after_complete");
-      return;
-    }
-
-    const timer = window.setTimeout(
-      () => {
-        trackGoogleAnalyticsEvent("completion_auto_return", analyticsExamDetails(session));
-        exitExam("auto_after_complete");
-      },
-      Math.ceil(secondsUntilHome * 1000),
-    );
-    return () => window.clearTimeout(timer);
-  }, [countdown, examEndSeconds, exitExam, session, virtualSeconds]);
+  }, [countdown, examEndSeconds, session, stopListening, virtualSeconds]);
 
   const revealControls = () => {
     setControlsVisible(true);
@@ -1332,6 +1342,10 @@ function App() {
       listeningVolume={listeningVolume}
       listeningResumeRequired={listeningResumeRequired}
       examCompleted={examCompleted}
+      examStartSeconds={examStartSeconds}
+      examEndSeconds={examEndSeconds}
+      selectedSubject={selectedSubject}
+      onAddBookmark={addBookmark}
       audioError={audioError}
       audioUnlockStatus={audioUnlockStatus}
       onRevealControls={revealControls}
@@ -1346,7 +1360,7 @@ function App() {
         setListeningVolume(next);
         if (listeningAudio.current) listeningAudio.current.volume = next;
       }}
-      onExit={() => exitExam("user")}
+      onExit={finishExam}
       onCompleteReturn={() => {
         trackGoogleAnalyticsEvent("completion_confirm", analyticsExamDetails(session));
         exitExam("completed_confirm");

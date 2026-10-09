@@ -4,12 +4,31 @@ export type Mode = "sync" | "subject" | "custom";
 export type ListeningTiming = "before" | "start";
 export type CustomStartMode = "now" | "specific";
 
+export interface ExamBookmark {
+  id: string;
+  clockSeconds: number;
+  subjectName: string;
+  period: string;
+  examElapsedSeconds: number;
+  elapsedSeconds: number;
+}
+
+export interface ExamCompletion {
+  endedAt: number;
+  clockSeconds: number;
+  reason: "finished" | "manual";
+}
+
 export interface Session {
   mode: Mode;
   syncWithCurrentTime?: boolean;
   scheduleStartSeconds?: number;
   subjectId?: SubjectId;
   startedAt: number;
+  // Unlike startedAt (the virtual timeline anchor), this never changes on skip.
+  actualStartedAt?: number;
+  bookmarks?: ExamBookmark[];
+  completion?: ExamCompletion;
   countdownUntil?: number;
   pausedAt?: number;
   pausedTotal: number;
@@ -24,7 +43,6 @@ export interface Session {
 export const SESSION_KEY = "mogo-clock-session";
 export const SETTINGS_KEY = "mogo-clock-settings";
 export const COUNTDOWN_SECONDS = 5;
-export const EXAM_COMPLETION_DELAY_SECONDS = 5 * 60;
 
 export const secondsNow = () => {
   const now = new Date();
