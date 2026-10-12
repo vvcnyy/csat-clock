@@ -58,3 +58,14 @@ test("next bell advances one announcement and disappears after the final bell", 
   assert.deepEqual(at(36000).skipTargets, { next: 36900, direct: 36900 });
   assert.equal(at(63900).skipTargets, null);
 });
+
+test("restored completed sessions keep the end clock and bookmark records", () => {
+  const session = JSON.parse(JSON.stringify({ ...base,
+    completion: { endedAt: 165000, clockSeconds: 63900, reason: "finished" },
+    bookmarks: [{ id: "mark-1", clockSeconds: 63810, subjectName: "제2외국어/한문" }],
+  }));
+  const result = useExamTimeline(session, "korean", "before");
+  assert.equal(result.virtualSeconds, 63900);
+  assert.equal(result.examInProgress, false);
+  assert.equal(session.bookmarks[0].clockSeconds, 63810);
+});

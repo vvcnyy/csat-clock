@@ -71,6 +71,7 @@ export function useExamTimeline(
     : 0;
 
   const virtualSeconds = useMemo(() => {
+    if (session?.completion) return session.completion.clockSeconds;
     if (!session || (session.mode === "sync" && session.syncWithCurrentTime !== false)) return secondsNow();
     const firstEvent =
       session.mode === "sync"
